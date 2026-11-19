@@ -53,6 +53,8 @@ Chặn trang bằng `declarativeNetRequest` (blocklist hoặc whitelist):
 
 ## Cài đặt
 
+> Hướng dẫn chi tiết, xử lý sự cố và phụ lục (quyền, dữ liệu, cổng mạng, FAQ, gỡ cài đặt): [`docs/INSTALL.md`](docs/INSTALL.md). Tải bản dựng sẵn ở [Releases](https://github.com/dikhamchua/forest-personal/releases).
+
 1. Mở `brave://extensions` (hoặc `chrome://extensions`), bật **Developer mode**.
 2. **Load unpacked** → chọn thư mục repo này.
 3. Mở **Options**, đăng nhập bằng tài khoản Forest.

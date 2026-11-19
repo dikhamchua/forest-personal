@@ -3,3 +3,4 @@ node_modules/
 dev-reload.flag
 Thumbs.db
 .DS_Store
+dist/
