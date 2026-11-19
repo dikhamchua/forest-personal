@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Forest Personal — Cài đặt</title>
+<link rel="stylesheet" href="ui.css">
+<style>
+  body {
+    margin: 0 auto;
+    padding: 28px 16px 60px;
+    max-width: 760px;
+    font-family: ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+  }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 18px; }
+  section { margin: 14px 0; }
+  h2 { font-size: 15px; margin: 0 0 12px; }
+  .row { display: flex; gap: 10px; align-items: center; margin: 8px 0; flex-wrap: wrap; }
+  .row > input, .row > select, .row > textarea { flex: 1 1 220px; }
+  .row > button { flex: 0 0 auto; }
+  .row > label { flex: 0 0 auto; display: flex; gap: 6px; align-items: center; color: var(--fg); }
+  .row input[type="checkbox"] { width: auto; flex: 0 0 auto; }
+  .stats { display: flex; gap: 20px; flex-wrap: wrap; margin: 10px 0; }
+  .stats > span { color: var(--muted); font-size: 12px; line-height: 1.4; }
+  .stats b { display: block; font-size: 18px; color: var(--fg); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 6px 4px; border-bottom: 1px solid var(--border); text-align: left; }
+  th { color: var(--muted); font-weight: 600; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .toast { font-size: 13px; }
+  section p { margin: 8px 0; }
+  section p:first-of-type { margin-top: 0; }
+</style>
+</head>
+<body>
+  <h1>🌳 Forest Personal</h1>
+  <div class="sub">Bản dựng lại cho cá nhân · API và giao thức của Forest 6.6.1</div>
+
+  <div id="app">Đang tải…</div>
+
+  <script type="module" src="options.js"></script>
+</body>
+</html>

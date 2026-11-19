@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "Forest Personal Dev Reloader",
+  "version": "1.0.1",
+  "description": "Tự reload extension Forest Personal khi file nguồn thay đổi (dev only).",
+  "permissions": [
+    "management",
+    "storage",
+    "alarms"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1:35730/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "icons": {
+    "16": "icons/16.png",
+    "32": "icons/32.png",
+    "48": "icons/48.png",
+    "128": "icons/128.png"
+  },
+  "action": {
+    "default_title": "Forest Personal Dev Reloader",
+    "default_icon": {
+      "16": "icons/16.png",
+      "32": "icons/32.png",
+      "48": "icons/48.png",
+      "128": "icons/128.png"
+    }
+  }
+}

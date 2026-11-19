@@ -1,0 +1,57 @@
+{
+  "manifest_version": 3,
+  "name": "Forest Personal",
+  "version": "0.7.2",
+  "description": "Bản dựng lại cho cá nhân: đăng nhập, trồng cây, nhận xu, vườn cây, chặn trang và đồng bộ với Forest.",
+  "permissions": [
+    "storage",
+    "alarms",
+    "cookies",
+    "declarativeNetRequest"
+  ],
+  "host_permissions": [
+    "https://c88fef96.forestapp.cc/*",
+    "https://forest-china.upwardsware.com/*",
+    "https://auth.seekrtech.com/*",
+    "https://auth.upwardsware.com/*",
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Forest Personal",
+    "default_icon": {
+      "16": "icons/16.png",
+      "32": "icons/32.png",
+      "48": "icons/48.png",
+      "128": "icons/128.png"
+    }
+  },
+  "options_page": "options.html",
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "blocked.html",
+        "blocked.js"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
+  ],
+  "optional_host_permissions": [
+    "http://127.0.0.1:35731/*"
+  ],
+  "icons": {
+    "16": "icons/16.png",
+    "32": "icons/32.png",
+    "48": "icons/48.png",
+    "128": "icons/128.png"
+  },
+  "optional_permissions": [
+    "notifications"
+  ]
+}

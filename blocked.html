@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Đang tập trung</title>
+<link rel="stylesheet" href="ui.css">
+<style>
+  html, body { height: 100%; margin: 0; }
+  body {
+    display: grid;
+    place-items: center;
+    font-family: ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+  }
+  .card {
+    text-align: center;
+    max-width: 460px;
+    padding: 36px 32px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    box-shadow: var(--shadow);
+  }
+  .big { font-size: 64px; line-height: 1; }
+  h1 { font-size: 22px; margin: 16px 0 8px; }
+  p { color: var(--muted); margin: 6px 0; }
+  #back { margin-top: 20px; padding: 10px 20px; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="big">🌳</div>
+    <h1>Trang này đang bị chặn</h1>
+    <p>Forest Personal đang giữ tập trung cho bạn. Hãy quay lại sau khi cây lớn.</p>
+    <button id="back">Quay lại</button>
+  </div>
+  <script src="blocked.js"></script>
+</body>
+</html>

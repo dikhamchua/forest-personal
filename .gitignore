@@ -1,0 +1,5 @@
+node_modules/
+*.log
+dev-reload.flag
+Thumbs.db
+.DS_Store
