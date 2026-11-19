@@ -114,13 +114,19 @@ function plotSvg(plants) {
     grid.push(`<line x1="${c.x}" y1="${c.y}" x2="${d.x}" y2="${d.y}"/>`);
   }
 
+  // Rải cây từ giữa ra ngoài: sắp ô theo khoảng cách tới tâm (hash cố định để ổn định).
+  const order = cells
+    .map((c) => ({ c, d: Math.hypot(c.i - (N - 1) / 2, c.j - (N - 1) / 2) + ((c.i * 7 + c.j * 13) % 10) / 10 }))
+    .sort((a, b) => a.d - b.d)
+    .map((x) => x.c);
+  // vẽ từ xa tới gần để cây phía trước che cây phía sau
   const placed = [...plants].sort((a, b) => new Date(a.startTime) - new Date(b.startTime)).slice(0, N * N);
   const extra = plants.length - placed.length;
 
-  const treeEls = placed.map((p, idx) => {
-    const i = Math.floor(idx / N);
-    const j = idx % N;
-    const cell = cells[i * N + j];
+  const treeEls = placed
+    .map((p, idx) => ({ p, cell: order[idx] }))
+    .sort((a, b) => (a.cell.i + a.cell.j) - (b.cell.i + b.cell.j))
+    .map(({ p, cell }) => {
     const cx = (cell.pts[0].x + cell.pts[2].x) / 2;
     const cy = (cell.pts[0].y + cell.pts[2].y) / 2;
     const tree = treeOf(p.treeTypeGid);
@@ -197,12 +203,17 @@ function chartSvg(buckets, labels) {
   const plotW = W - L - R;
   const plotH = H - T - B;
   const maxRaw = Math.max(5, ...buckets);
-  const max = Math.ceil(maxRaw / 5) * 5;
+  // bước chia "đẹp" (5,10,20,25,50,100…) để tối đa ~6 vạch
+  const rough = maxRaw / 5;
+  const pow = Math.pow(10, Math.floor(Math.log10(rough)));
+  const stepV = [1, 2, 2.5, 5, 10].map((m) => m * pow).find((v) => v >= rough) || 10 * pow;
+  const stepY = Math.max(5, Math.round(stepV));
+  const max = Math.ceil(maxRaw / stepY) * stepY;
   const step = plotW / buckets.length;
   const yOf = (v) => T + plotH - (v / max) * plotH;
 
   const lines = [];
-  for (let v = 0; v <= max; v += 5) {
+  for (let v = 0; v <= max; v += stepY) {
     const y = yOf(v);
     lines.push(`<line x1="${L}" y1="${y.toFixed(1)}" x2="${W - R}" y2="${y.toFixed(1)}" stroke="var(--border)" stroke-width="1"/>`);
     lines.push(`<text x="${L - 6}" y="${(y + 3).toFixed(1)}" font-size="9" text-anchor="end" fill="var(--muted)">${v}</text>`);
