@@ -149,12 +149,17 @@ async function clearBadge() {
   } catch { /* ignore */ }
 }
 
-async function notifySystem(title, message) {
+/* Trả { ok, reason }. reason: disabled | no_permission | no_api | blocked_by_browser | error:<msg> */
+async function notifySystem(title, message, { force = false } = {}) {
   const s = await loadState();
-  if (s.notifyEnabled === false) return null;
+  if (!force && s.notifyEnabled === false) return { ok: false, reason: "disabled" };
   try {
     const granted = await chrome.permissions.contains({ permissions: ["notifications"] });
-    if (!granted) return null;
+    if (!granted) return { ok: false, reason: "no_permission" };
+    if (!chrome.notifications) return { ok: false, reason: "no_api" };
+    ensureNotifyListeners();
+    const level = await chrome.notifications.getPermissionLevel();
+    if (level !== "granted") return { ok: false, reason: "blocked_by_browser" };
     const id = `fp-${Date.now()}`;
     await chrome.notifications.create(id, {
       type: "basic",
@@ -162,18 +167,27 @@ async function notifySystem(title, message) {
       title,
       message,
       priority: 2,
+      requireInteraction: false,
     });
-    return id;
+    return { ok: true, id };
   } catch (e) {
     console.warn("notifications:", e?.message || e);
-    return null;
+    return { ok: false, reason: `error:${e?.message || e}` };
   }
 }
 
-chrome.notifications?.onClicked.addListener((id) => {
-  chrome.notifications.clear(id);
-  chrome.tabs.create({ url: chrome.runtime.getURL("garden.html") }).catch(() => {});
-});
+/* chrome.notifications chỉ tồn tại sau khi được cấp quyền → đăng ký listener muộn. */
+let notifyListenerBound = false;
+function ensureNotifyListeners() {
+  if (notifyListenerBound || !chrome.notifications) return;
+  notifyListenerBound = true;
+  chrome.notifications.onClicked.addListener((id) => {
+    chrome.notifications.clear(id);
+    chrome.tabs.create({ url: chrome.runtime.getURL("garden.html") }).catch(() => {});
+  });
+}
+ensureNotifyListeners();
+chrome.permissions.onAdded?.addListener(ensureNotifyListeners);
 
 /* ---------- Trồng cây ---------- */
 
@@ -423,6 +437,18 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         } catch (e) {
           sendResponse({ ok: false, error: e.message, status: e.status, data: e.data });
         }
+        break;
+      }
+      case "TEST_NOTIFICATION": {
+        const r = await notifySystem("🌳 Thông báo thử", "Nếu bạn thấy toast này, thông báo hệ thống đang hoạt động.", { force: true });
+        sendResponse({ ok: r.ok, reason: r.reason || null });
+        break;
+      }
+      case "NOTIFY_STATUS": {
+        const granted = await chrome.permissions.contains({ permissions: ["notifications"] });
+        let level = null;
+        if (granted && chrome.notifications) level = await chrome.notifications.getPermissionLevel();
+        sendResponse({ ok: true, granted, level });
         break;
       }
       case "ACK_BADGE": {

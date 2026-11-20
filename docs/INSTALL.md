@@ -83,7 +83,8 @@ Muốn tự chạy cùng Windows: bấm `Win+R` → `shell:startup` → tạo sh
 | Đăng nhập lỗi 488 | Tài khoản cần chuyển vùng/khôi phục trong app Forest | Xử lý trong app Forest rồi thử lại |
 | Cây đã trồng nhưng không lên server | Mất mạng hoặc phiên hết hạn | Options → **Sync ngay**; cây chờ sẽ có viền nét đứt trong Vườn cây |
 | Extension tự tắt sau khi reload | Chrome tắt extension khi manifest thêm quyền mới | Vào `brave://extensions`, bật lại và chấp nhận quyền |
-| Không thấy toast Windows | Focus Assist / Không làm phiền đang bật, hoặc chưa cấp quyền | Tắt Focus Assist; bật lại toggle trong Options và chọn Allow; bật thông báo cho Brave trong Windows Settings |
+| Options báo “Chưa cấp quyền” | Quyền thông báo là tuỳ chọn, chưa được cho phép | Bấm **Gửi thử** (hoặc tick ô) và chọn **Allow** |
+| Không thấy toast Windows | Focus Assist / Không làm phiền đang bật, hoặc chưa cấp quyền | Tắt Focus Assist; bấm **Gửi thử** trong Options để xem lý do cụ thể; bật thông báo cho Brave trong Windows Settings |
 | Chỉ thấy badge, không có toast | Thông báo hệ thống đang tắt | Bình thường, badge vàng độc lập với toast |
 | Icon vẫn là chữ “F” | Chrome giữ icon cũ | Reload card; nếu vẫn thế, gỡ và Load unpacked lại |
 | Widget không hiện số xu/cây | Bridge chưa chạy hoặc toggle chưa bật | Chạy lại `start-float.bat`; kiểm tra `http://127.0.0.1:35731/health` trả `{"ok":true}` |
@@ -165,6 +166,7 @@ Quyền tuỳ chọn không đặt trong `permissions` vì thêm quyền lúc re
 
 | Phiên bản | Nội dung chính |
 |---|---|
+| 0.7.3 | Sửa thông báo: trạng thái phản ánh quyền thật, nút Gửi thử, chẩn đoán lý do |
 | 0.7.2 | Badge vàng trên icon khi hoàn thành |
 | 0.7.1 | Quyền `notifications` chuyển sang tuỳ chọn |
 | 0.7.0 | Thông báo hệ thống khi cây lớn/chết |

@@ -144,17 +144,52 @@ function floatSection(state) {
 }
 
 function notifySection(state) {
-  const on = state.notifyEnabled !== false;
   return `
     <section>
       <h2>Thông báo hệ thống</h2>
       <div class="row">
-        <label><input type="checkbox" id="notifyEnabled"${on ? " checked" : ""}> Hiện toast Windows khi cây lớn / cây chết</label>
-        <span id="notifyMsg" class="toast"></span>
+        <label><input type="checkbox" id="notifyEnabled"> Hiện toast Windows khi cây lớn / cây chết</label>
+        <button id="notifyTest" class="ghost">Gửi thử</button>
       </div>
-      <p class="hint">Dùng <code>chrome.notifications</code> (quyền tuỳ chọn — bật lần đầu Chrome sẽ hỏi).
-        Toast vẫn hiện khi Brave bị thu nhỏ; bấm vào toast để mở Vườn cây.</p>
+      <p id="notifyStatus" class="toast hint">Đang kiểm tra quyền…</p>
+      <p class="hint">Dùng <code>chrome.notifications</code> (quyền tuỳ chọn: Chrome sẽ hỏi khi bật).
+        Toast vẫn hiện khi Brave bị thu nhỏ; bấm vào toast để mở Vườn cây.
+        Nếu không thấy toast, kiểm tra Windows Settings → Hệ thống → Thông báo (bật cho Brave) và tắt Focus Assist.</p>
     </section>`;
+}
+
+const NOTIFY_REASONS = {
+  no_permission: "Chưa cấp quyền thông báo cho extension.",
+  no_api: "Chrome chưa nạp API thông báo — reload extension rồi thử lại.",
+  blocked_by_browser: "Trình duyệt/Windows đang chặn thông báo của Brave (Settings → Notifications, hoặc Focus Assist).",
+  disabled: "Thông báo đang tắt trong cài đặt.",
+};
+
+async function refreshNotifyStatus(state) {
+  const box = $("#notifyEnabled");
+  const status = $("#notifyStatus");
+  if (!box || !status) return;
+  const r = await send({ cmd: "NOTIFY_STATUS" }).catch(() => null);
+  const granted = !!r?.granted;
+  box.checked = granted && state.notifyEnabled !== false;
+  if (!granted) {
+    status.innerHTML = '<span class="bad">Chưa cấp quyền — tick ô trên hoặc bấm “Gửi thử” rồi chọn Allow.</span>';
+  } else if (r.level && r.level !== "granted") {
+    status.innerHTML = `<span class="bad">Đã cấp quyền nhưng Brave/Windows chặn thông báo (mức: ${esc(r.level)}).</span>`;
+  } else if (state.notifyEnabled === false) {
+    status.innerHTML = "Đã cấp quyền, nhưng đang tắt.";
+  } else {
+    status.innerHTML = '<span class="ok">Đang bật — quyền đã được cấp.</span>';
+  }
+}
+
+async function ensureNotifyPermission() {
+  try {
+    if (await chrome.permissions.contains({ permissions: ["notifications"] })) return true;
+    return await chrome.permissions.request({ permissions: ["notifications"] });
+  } catch {
+    return false;
+  }
 }
 
 function historySection(state) {
@@ -271,21 +306,38 @@ async function renderPage() {
     render();
   };
 
+  refreshNotifyStatus(state);
+
   $("#notifyEnabled").onchange = async () => {
     const on = $("#notifyEnabled").checked;
-    if (on) {
-      let granted = false;
-      try { granted = await chrome.permissions.request({ permissions: ["notifications"] }); } catch { granted = false; }
-      if (!granted) {
-        $("#notifyEnabled").checked = false;
-        $("#notifyMsg").innerHTML = '<span class="bad">Chưa cấp quyền thông báo — bấm lại và chọn Allow.</span>';
-        return;
-      }
+    if (on && !(await ensureNotifyPermission())) {
+      $("#notifyEnabled").checked = false;
+      await refreshNotifyStatus(state);
+      return;
     }
     const r = await send({ cmd: "UPDATE_SETTINGS", patch: { notifyEnabled: on } });
-    $("#notifyMsg").innerHTML = r?.ok
-      ? `<span class="ok">${on ? "Đã bật" : "Đã tắt"}</span>`
-      : `<span class="bad">Lỗi: ${esc(r?.error)}</span>`;
+    state.notifyEnabled = on;
+    if (!r?.ok) $("#notifyStatus").innerHTML = `<span class="bad">Lỗi: ${esc(r?.error)}</span>`;
+    else await refreshNotifyStatus(state);
+  };
+
+  $("#notifyTest").onclick = async () => {
+    const status = $("#notifyStatus");
+    status.textContent = "Đang gửi…";
+    if (!(await ensureNotifyPermission())) {
+      await refreshNotifyStatus(state);
+      return;
+    }
+    const r = await send({ cmd: "TEST_NOTIFICATION" }).catch((e) => ({ ok: false, reason: `error:${e.message}` }));
+    if (r?.ok) {
+      status.innerHTML = '<span class="ok">Đã gửi. Nếu không thấy toast: kiểm tra Windows Settings → Thông báo (Brave) và Focus Assist.</span>';
+    } else {
+      const reason = r?.reason || "unknown";
+      status.innerHTML = `<span class="bad">Không gửi được: ${esc(NOTIFY_REASONS[reason] || reason)}</span>`;
+    }
+    await send({ cmd: "UPDATE_SETTINGS", patch: { notifyEnabled: true } });
+    state.notifyEnabled = true;
+    const box = $("#notifyEnabled"); if (box && r?.ok) box.checked = true;
   };
 
   $("#floatEnabled").onchange = async () => {
