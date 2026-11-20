@@ -182,6 +182,7 @@ $startBtn.Add_Click({
 $giveBtn.Add_Click({ Write-Cmd @{ cmd = "giveup" } })
 
 $script:lastPhase = ""
+$script:durationSynced = $false
 $script:imgTried = @{}
 $script:curImgUrl = $null
 $script:curImgOk = $false
@@ -217,6 +218,10 @@ function Update-Ui {
 
     $planting = $s.planting
     $loggedIn = ($s.loggedIn -eq $true)
+    if (-not $script:durationSynced -and $s.selectedDuration) {
+        $script:durationSynced = $true
+        Select-Duration ([int]$s.selectedDuration)
+    }
 
     if (-not $loggedIn) {
         $treeImg.Visibility = "Collapsed"; $tree.Visibility = "Visible"

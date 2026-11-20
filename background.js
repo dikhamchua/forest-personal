@@ -150,7 +150,15 @@ async function clearBadge() {
 }
 
 /* Trả { ok, reason }. reason: disabled | no_permission | no_api | blocked_by_browser | error:<msg> */
-async function notifySystem(title, message, { force = false } = {}) {
+async function notifySystem(title, message, opts = {}) {
+  const r = await notifySystemRaw(title, message, opts);
+  if (r.reason !== "disabled") {
+    await saveState({ lastNotify: { at: Date.now(), ok: r.ok, reason: r.reason || null } }).catch(() => {});
+  }
+  return r;
+}
+
+async function notifySystemRaw(title, message, { force = false } = {}) {
   const s = await loadState();
   if (!force && s.notifyEnabled === false) return { ok: false, reason: "disabled" };
   try {
@@ -158,8 +166,6 @@ async function notifySystem(title, message, { force = false } = {}) {
     if (!granted) return { ok: false, reason: "no_permission" };
     if (!chrome.notifications) return { ok: false, reason: "no_api" };
     ensureNotifyListeners();
-    const level = await chrome.notifications.getPermissionLevel();
-    if (level !== "granted") return { ok: false, reason: "blocked_by_browser" };
     const id = `fp-${Date.now()}`;
     await chrome.notifications.create(id, {
       type: "basic",
@@ -205,7 +211,7 @@ async function startPlanting({ treeTypeGid, tag, note, durationMin }) {
     endTime: new Date(now + duration * 60_000).toISOString(),
     durationMin: duration,
   };
-  await saveState({ planting });
+  await saveState({ planting, selectedDuration: duration });
   await chrome.alarms.create(ALARM_DONE, { when: now + duration * 60_000 });
   return { ok: true, planting };
 }
@@ -293,6 +299,7 @@ function floatSnapshot(s) {
     loggedIn: !!s.user,
     coin: s.user?.coin ?? 0,
     blockEnabled: !!s.blockEnabled,
+    selectedDuration: s.selectedDuration || 25,
     planting: p
       ? {
           endTime: p.endTime,

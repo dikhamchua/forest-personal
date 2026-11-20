@@ -15,6 +15,8 @@ export const DEFAULT_STATE = {
   tags: [],              // [{ tagId, title }]
   treeTypes: [],         // [{ gid, title, image }]
   selectedTreeGid: 0,    // loại cây đang chọn ở popup
+  selectedDuration: 25,  // thời lượng (phút) lần trồng gần nhất / đang chọn
+  lastNotify: null,      // { at, ok, reason } kết quả gửi thông báo gần nhất
   planting: null,        // { treeTypeGid, tag, note, startTime, endTime, durationMin }
   pendingPlants: [],     // cây chưa đẩy được lên server
   serverPlants: [],      // cache lịch sử server

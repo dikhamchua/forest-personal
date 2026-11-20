@@ -28,6 +28,7 @@ const DEFAULT_TREE = { gid: 0, title: "Cây mặc định" };
 let ticker = null;
 let state = null;
 let selectedDuration = 25;
+let durationTouched = false;
 let catalogRequested = false;
 
 const phaseOf = (ratio) => PHASES.find((p) => ratio < p.max);
@@ -119,7 +120,17 @@ function idleView(s) {
       <button class="link" id="garden" title="Xem vườn cây">🌳 ${living}</button>
     </div>
     ${reward}
+    ${notifyWarning(s)}
   `);
+}
+
+function notifyWarning(s) {
+  const ln = s.lastNotify;
+  if (s.notifyEnabled === false || !ln || ln.ok) return "";
+  const msg = ln.reason === "no_permission"
+    ? "Thông báo chưa hoạt động: chưa cấp quyền. Mở ⚙ → Thông báo hệ thống → Gửi thử → Allow."
+    : "Lần thông báo gần nhất không gửi được. Mở ⚙ → Thông báo hệ thống để xem lý do.";
+  return `<div class="note warn">🔔 ${esc(msg)}</div>`;
 }
 
 function plantingView(s) {
@@ -261,6 +272,9 @@ async function render() {
   }
 
   state = res.state;
+  if (!durationTouched && DURATIONS.includes(Number(state.selectedDuration))) {
+    selectedDuration = Number(state.selectedDuration);
+  }
   send({ cmd: "ACK_BADGE" }).catch(() => {});
   const stale = res.build !== 3;
   const staleNote = stale
@@ -309,6 +323,8 @@ async function render() {
   for (const chip of document.querySelectorAll("#durations .chip")) {
     chip.onclick = () => {
       selectedDuration = Number(chip.dataset.d);
+      durationTouched = true;
+      send({ cmd: "UPDATE_SETTINGS", patch: { selectedDuration } }).catch(() => {});
       for (const c of document.querySelectorAll("#durations .chip")) {
         c.dataset.sel = c === chip ? "1" : "0";
       }

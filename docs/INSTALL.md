@@ -166,6 +166,7 @@ Quyền tuỳ chọn không đặt trong `permissions` vì thêm quyền lúc re
 
 | Phiên bản | Nội dung chính |
 |---|---|
+| 0.7.4 | Nhớ thời lượng đã chọn (không về 25′), popup cảnh báo khi thông báo không gửi được, ghi lại kết quả lần gửi gần nhất |
 | 0.7.3 | Sửa thông báo: trạng thái phản ánh quyền thật, nút Gửi thử, chẩn đoán lý do |
 | 0.7.2 | Badge vàng trên icon khi hoàn thành |
 | 0.7.1 | Quyền `notifications` chuyển sang tuỳ chọn |

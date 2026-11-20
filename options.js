@@ -181,6 +181,13 @@ async function refreshNotifyStatus(state) {
   } else {
     status.innerHTML = '<span class="ok">Đang bật — quyền đã được cấp.</span>';
   }
+  const ln = state.lastNotify;
+  if (ln) {
+    const when = new Date(ln.at).toLocaleString("vi-VN");
+    status.innerHTML += `<br>Lần gửi gần nhất (${esc(when)}): ` +
+      (ln.ok ? '<span class="ok">Chrome đã nhận lệnh hiển thị.</span>'
+             : `<span class="bad">${esc(NOTIFY_REASONS[ln.reason] || ln.reason || "thất bại")}</span>`);
+  }
 }
 
 async function ensureNotifyPermission() {
