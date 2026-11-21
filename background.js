@@ -119,6 +119,74 @@ async function applyBlockRules(s) {
 /* ---------- Thông báo hệ thống ----------
    chrome.notifications hiện toast của Windows cả khi cửa sổ Brave bị thu nhỏ. */
 
+/* ---------- Telegram bot ----------
+   Gửi tin qua https://api.telegram.org/bot<token>/sendMessage. Token và chat id do
+   người dùng nhập ở Options (lưu cục bộ trong chrome.storage.local). */
+
+const escHtml = (t) => String(t ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+
+async function telegramCall(token, method, body) {
+  // Token dạng 123456:ABC-def_… — chỉ cho phép ký tự hợp lệ, không mã hoá ":" trong path.
+  if (!/^\d+:[A-Za-z0-9_-]+$/.test(token)) throw new Error("Token không đúng định dạng (123456:ABC…)");
+  const res = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body || {}),
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok || !data?.ok) {
+    const err = new Error(data?.description || `HTTP ${res.status}`);
+    err.status = res.status;
+    throw err;
+  }
+  return data.result;
+}
+
+async function sendTelegram(text, override) {
+  const s = await loadState();
+  const t = { ...(s.telegram || {}), ...(override || {}) };
+  if (!override && !t.enabled) return { ok: false, reason: "disabled" };
+  if (!t.token || !t.chatId) return { ok: false, reason: "not_configured" };
+  let out;
+  try {
+    await telegramCall(t.token.trim(), "sendMessage", {
+      chat_id: String(t.chatId).trim(),
+      text,
+      parse_mode: "HTML",
+      disable_web_page_preview: true,
+    });
+    out = { ok: true };
+  } catch (e) {
+    out = { ok: false, reason: `telegram:${e.message}` };
+  }
+  if (!override) await saveState({ lastTelegram: { at: Date.now(), ok: out.ok, reason: out.reason || null } }).catch(() => {});
+  return out;
+}
+
+function todayCount(s) {
+  const key = new Date().toDateString();
+  const all = [...(s.serverPlants || []), ...(s.pendingPlants || [])];
+  const mine = all.filter((p) => p.startTime && new Date(p.startTime).toDateString() === key);
+  return { alive: mine.filter((p) => p.isSuccess).length, dead: mine.filter((p) => !p.isSuccess).length };
+}
+
+async function notifyTelegramDone(p, success, coins, elapsedMin) {
+  const s = await loadState();
+  if (!s.telegram?.enabled) return;
+  const tree = s.treeTypes?.find((t) => Number(t.gid) === Number(p.treeTypeGid))?.title || `Cây #${p.treeTypeGid}`;
+  const tag = (s.tags?.length ? s.tags : []).find((t) => Number(t.tagId) === Number(p.tag))?.title;
+  const day = todayCount(s);
+  const lines = success
+    ? [
+        "🌳 <b>Cây đã lớn!</b>",
+        `${escHtml(tree)} · ${p.durationMin} phút${tag ? ` · ${escHtml(tag)}` : ""}`,
+        coins != null && coins > 0 ? `🪙 +${coins} xu${s.user?.coin != null ? ` (tổng ${s.user.coin})` : ""}` : null,
+      ]
+    : ["🥀 <b>Cây đã chết</b>", `${escHtml(tree)} · bỏ cuộc sau ${elapsedMin}/${p.durationMin} phút`];
+  lines.push(`Hôm nay: ${day.alive} cây sống${day.dead ? `, ${day.dead} chết` : ""}`);
+  await sendTelegram(lines.filter(Boolean).join("\n"));
+}
+
 /* ---------- Badge vàng trên icon khi hoàn thành ----------
    Dùng khi người dùng tắt thông báo hệ thống: icon có chấm vàng "+N" / "✓".
    Xoá badge khi mở popup (ACK_BADGE). */
@@ -268,8 +336,10 @@ async function finishPlanting(success) {
       `${p.durationMin} phút tập trung hoàn tất${coins != null && coins > 0 ? ` · +${coins} xu` : ""}`,
     );
     await setDoneBadge(coins);
+    await notifyTelegramDone(p, true, coins, elapsedMin);
   } else {
     await notifySystem("🥀 Cây đã chết", `Bạn bỏ cuộc sau ${elapsedMin} phút tập trung`);
+    await notifyTelegramDone(p, false, null, elapsedMin);
   }
   return result;
 }
@@ -443,6 +513,31 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           sendResponse({ ok: true, user });
         } catch (e) {
           sendResponse({ ok: false, error: e.message, status: e.status, data: e.data });
+        }
+        break;
+      }
+      case "TEST_TELEGRAM": {
+        const r = await sendTelegram("🌳 <b>Forest Personal</b>\nTin nhắn thử: Telegram đã kết nối thành công.", {
+          token: msg.token,
+          chatId: msg.chatId,
+        });
+        sendResponse({ ok: r.ok, reason: r.reason || null });
+        break;
+      }
+      case "TELEGRAM_FIND_CHAT": {
+        try {
+          const updates = await telegramCall(String(msg.token || "").trim(), "getUpdates", { limit: 20 });
+          const chats = [];
+          for (const u of updates.reverse()) {
+            const m = u.message || u.edited_message || u.channel_post || u.my_chat_member;
+            const chat = m?.chat;
+            if (chat && !chats.find((c) => c.id === chat.id)) {
+              chats.push({ id: chat.id, name: chat.title || [chat.first_name, chat.last_name].filter(Boolean).join(" ") || chat.username || String(chat.id), type: chat.type });
+            }
+          }
+          sendResponse({ ok: true, chats });
+        } catch (e) {
+          sendResponse({ ok: false, error: e.message });
         }
         break;
       }

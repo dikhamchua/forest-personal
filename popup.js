@@ -125,12 +125,15 @@ function idleView(s) {
 }
 
 function notifyWarning(s) {
+  const tg = s.lastTelegram;
+  if (s.telegram?.enabled && tg && !tg.ok) {
+    return `<div class="note warn">✈️ Telegram không gửi được: ${esc(tg.reason || "lỗi")}. Mở ⚙ để kiểm tra.</div>`;
+  }
   const ln = s.lastNotify;
-  if (s.notifyEnabled === false || !ln || ln.ok) return "";
-  const msg = ln.reason === "no_permission"
-    ? "Thông báo chưa hoạt động: chưa cấp quyền. Mở ⚙ → Thông báo hệ thống → Gửi thử → Allow."
-    : "Lần thông báo gần nhất không gửi được. Mở ⚙ → Thông báo hệ thống để xem lý do.";
-  return `<div class="note warn">🔔 ${esc(msg)}</div>`;
+  if (s.notifyEnabled && ln && !ln.ok && ln.reason !== "no_permission") {
+    return `<div class="note warn">🔔 Thông báo hệ thống không gửi được. Mở ⚙ để xem lý do.</div>`;
+  }
+  return "";
 }
 
 function plantingView(s) {

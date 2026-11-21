@@ -16,6 +16,8 @@ export const DEFAULT_STATE = {
   treeTypes: [],         // [{ gid, title, image }]
   selectedTreeGid: 0,    // loại cây đang chọn ở popup
   selectedDuration: 25,  // thời lượng (phút) lần trồng gần nhất / đang chọn
+  telegram: { enabled: false, token: "", chatId: "" },
+  lastTelegram: null,    // { at, ok, reason }
   lastNotify: null,      // { at, ok, reason } kết quả gửi thông báo gần nhất
   planting: null,        // { treeTypeGid, tag, note, startTime, endTime, durationMin }
   pendingPlants: [],     // cây chưa đẩy được lên server
@@ -29,7 +31,7 @@ export const DEFAULT_STATE = {
   whitelistMode: false,
   blockEnabled: true,
   floatEnabled: false,   // widget always-on-top (float/)
-  notifyEnabled: true,   // toast hệ thống khi cây lớn / cây chết
+  notifyEnabled: false,  // toast hệ thống (tuỳ chọn, cần quyền)
 };
 
 export async function loadState() {

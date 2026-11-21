@@ -44,7 +44,8 @@ Sau đó làm từ bước 3 của mục 1, chọn thư mục `forest-personal` 
 2. Chọn vùng (Global / China), nhập email và mật khẩu tài khoản Forest, bấm **Đăng nhập**.
 3. Extension tự tải danh sách cây, tag và lịch sử 30 ngày gần nhất.
 4. Mở popup: chọn thời lượng, chọn cây (nút tên cây, có ô tìm kiếm), bấm cây tròn hoặc `+` để trồng.
-5. Bật **Thông báo hệ thống** trong Options và chọn **Allow** khi Chrome hỏi quyền.
+5. (Khuyến nghị) Thiết lập **Thông báo Telegram**: mở Telegram → chat với `@BotFather` → `/newbot` → copy token; mở bot vừa tạo và bấm **Start**; trong Options dán token, bấm **Lấy chat ID**, **Lưu**, rồi **Gửi thử**.
+6. (Tuỳ chọn) Bật **Thông báo hệ thống** (toast Windows) và chọn **Allow** khi Chrome hỏi quyền.
 
 Lưu ý: tài khoản đăng nhập bằng Google/Facebook/Apple cần có mật khẩu Forest (đặt trong app Forest) vì extension chưa hỗ trợ đăng nhập mạng xã hội.
 
@@ -84,6 +85,8 @@ Muốn tự chạy cùng Windows: bấm `Win+R` → `shell:startup` → tạo sh
 | Cây đã trồng nhưng không lên server | Mất mạng hoặc phiên hết hạn | Options → **Sync ngay**; cây chờ sẽ có viền nét đứt trong Vườn cây |
 | Extension tự tắt sau khi reload | Chrome tắt extension khi manifest thêm quyền mới | Vào `brave://extensions`, bật lại và chấp nhận quyền |
 | Options báo “Chưa cấp quyền” | Quyền thông báo là tuỳ chọn, chưa được cho phép | Bấm **Gửi thử** (hoặc tick ô) và chọn **Allow** |
+| Telegram “Unauthorized” | Token sai hoặc đã bị thu hồi | Lấy lại token ở @BotFather |
+| Telegram “chat not found” / không lấy được chat ID | Chưa Start bot | Mở bot, bấm Start, gửi 1 tin rồi bấm Lấy chat ID |
 | Không thấy toast Windows | Focus Assist / Không làm phiền đang bật, hoặc chưa cấp quyền | Tắt Focus Assist; bấm **Gửi thử** trong Options để xem lý do cụ thể; bật thông báo cho Brave trong Windows Settings |
 | Chỉ thấy badge, không có toast | Thông báo hệ thống đang tắt | Bình thường, badge vàng độc lập với toast |
 | Icon vẫn là chữ “F” | Chrome giữ icon cũ | Reload card; nếu vẫn thế, gỡ và Load unpacked lại |
@@ -112,7 +115,8 @@ Quyền tuỳ chọn không đặt trong `permissions` vì thêm quyền lúc re
 - Tất cả nằm trong `chrome.storage.local` của extension, key `fpState`: người dùng, tag, loại cây, cây chờ sync, cache lịch sử, blocklist, cờ bật/tắt.
 - Phiên đăng nhập là cookie `remember_token` trên domain API của Forest; extension giữ thêm bản sao trong `fpState.user.rememberToken` để khôi phục khi cookie bị xoá.
 - Widget dùng thư mục `%TEMP%\forest-float\` (`state.json`, `cmd.json`), chỉ chứa trạng thái hiển thị, không có mật khẩu.
-- Không có telemetry, không gửi dữ liệu tới bên thứ ba ngoài server Forest và CDN ảnh cây (`forest-ops-assets.seekrtech.com`).
+- Không có telemetry. Dữ liệu chỉ gửi tới server Forest, CDN ảnh cây (`forest-ops-assets.seekrtech.com`) và, nếu bạn bật, `api.telegram.org`.
+- Token bot Telegram lưu dạng văn bản thường trong `chrome.storage.local`; nếu nghi lộ, thu hồi bằng `/revoke` ở @BotFather.
 - Xoá toàn bộ dữ liệu: Options → **Đăng xuất**, hoặc gỡ extension.
 
 ## Phụ lục D — Cổng và địa chỉ mạng
@@ -166,6 +170,7 @@ Quyền tuỳ chọn không đặt trong `permissions` vì thêm quyền lúc re
 
 | Phiên bản | Nội dung chính |
 |---|---|
+| 0.8.0 | Thông báo Telegram (bot), toast hệ thống chuyển thành tuỳ chọn |
 | 0.7.4 | Nhớ thời lượng đã chọn (không về 25′), popup cảnh báo khi thông báo không gửi được, ghi lại kết quả lần gửi gần nhất |
 | 0.7.3 | Sửa thông báo: trạng thái phản ánh quyền thật, nút Gửi thử, chẩn đoán lý do |
 | 0.7.2 | Badge vàng trên icon khi hoàn thành |

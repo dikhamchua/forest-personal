@@ -46,7 +46,8 @@ Chặn trang bằng `declarativeNetRequest` (blocklist hoặc whitelist):
 
 ### Khác
 
-- **Thông báo hệ thống** (toast Windows) khi cây lớn hoặc chết; bấm toast để mở Vườn cây.
+- **Thông báo Telegram** qua bot của bạn (cây lớn/chết, xu, số cây trong ngày): thiết lập trong Options, có nút lấy chat ID và gửi thử.
+- **Thông báo hệ thống** (toast Windows, tuỳ chọn) khi cây lớn hoặc chết; bấm toast để mở Vườn cây.
 - **Badge vàng** `✓` / `+N` trên icon khi hoàn thành, tự xóa khi mở popup (dùng khi tắt thông báo).
 - **Sync 2 chiều**: đẩy cây đang chờ (`POST /plants`), kéo lịch sử (`GET /plants`), xu thưởng = chênh lệch coin sau khi ghi.
 - **Giao diện** light/dark theo hệ thống, dùng chung design token ở `ui.css`.

@@ -143,6 +143,35 @@ function floatSection(state) {
     </section>`;
 }
 
+function telegramSection(state) {
+  const t = state.telegram || {};
+  const last = state.lastTelegram;
+  const lastHtml = last
+    ? `<p class="toast hint">Lần gửi gần nhất (${esc(new Date(last.at).toLocaleString("vi-VN"))}): ${
+        last.ok ? '<span class="ok">thành công</span>' : `<span class="bad">${esc(last.reason || "thất bại")}</span>`}</p>`
+    : "";
+  return `
+    <section>
+      <h2>Thông báo Telegram</h2>
+      <div class="row"><label><input type="checkbox" id="tgEnabled"${t.enabled ? " checked" : ""}> Gửi tin Telegram khi cây lớn / cây chết</label></div>
+      <div class="row"><input id="tgToken" type="password" placeholder="Bot token (từ @BotFather)" autocomplete="off" value="${esc(t.token || "")}"></div>
+      <div class="row">
+        <input id="tgChat" type="text" placeholder="Chat ID" autocomplete="off" value="${esc(t.chatId || "")}">
+        <button id="tgFind" class="ghost">Lấy chat ID</button>
+      </div>
+      <div class="row">
+        <button id="tgSave">Lưu</button>
+        <button id="tgTest" class="ghost">Gửi thử</button>
+        <span id="tgMsg" class="toast"></span>
+      </div>
+      ${lastHtml}
+      <p class="hint">Cách thiết lập: (1) mở Telegram, chat với <code>@BotFather</code> → <code>/newbot</code> → copy token;
+        (2) mở bot vừa tạo và bấm <b>Start</b> (gửi 1 tin bất kỳ);
+        (3) dán token rồi bấm <b>Lấy chat ID</b>; (4) <b>Lưu</b> và <b>Gửi thử</b>.
+        Token lưu cục bộ trong trình duyệt, chỉ dùng để gọi <code>api.telegram.org</code>.</p>
+    </section>`;
+}
+
 function notifySection(state) {
   return `
     <section>
@@ -266,6 +295,7 @@ async function renderPage() {
     </section>` : "") +
     accountSection(state) +
     syncSection(state) +
+    telegramSection(state) +
     notifySection(state) +
     floatSection(state) +
     blockSection(state) +
@@ -314,6 +344,34 @@ async function renderPage() {
   };
 
   refreshNotifyStatus(state);
+
+  const tgMsg = (html) => { $("#tgMsg").innerHTML = html; };
+  const tgInput = () => ({ token: $("#tgToken").value.trim(), chatId: $("#tgChat").value.trim() });
+  $("#tgSave").onclick = async () => {
+    const { token, chatId } = tgInput();
+    const enabled = $("#tgEnabled").checked;
+    if (enabled && (!token || !chatId)) { tgMsg('<span class="bad">Cần nhập token và chat ID.</span>'); return; }
+    const r = await send({ cmd: "UPDATE_SETTINGS", patch: { telegram: { enabled, token, chatId } } });
+    tgMsg(r?.ok ? '<span class="ok">Đã lưu.</span>' : `<span class="bad">Lỗi: ${esc(r?.error)}</span>`);
+  };
+  $("#tgEnabled").onchange = () => $("#tgSave").click();
+  $("#tgFind").onclick = async () => {
+    const { token } = tgInput();
+    if (!token) { tgMsg('<span class="bad">Nhập token trước.</span>'); return; }
+    tgMsg("Đang tìm…");
+    const r = await send({ cmd: "TELEGRAM_FIND_CHAT", token });
+    if (!r?.ok) { tgMsg(`<span class="bad">Lỗi: ${esc(r?.error)}</span>`); return; }
+    if (!r.chats.length) { tgMsg('<span class="bad">Chưa thấy chat nào — mở bot, bấm Start/gửi 1 tin rồi thử lại.</span>'); return; }
+    $("#tgChat").value = r.chats[0].id;
+    tgMsg(`<span class="ok">Tìm thấy: ${esc(r.chats[0].name)} (${r.chats[0].id}). Bấm Lưu.</span>`);
+  };
+  $("#tgTest").onclick = async () => {
+    const { token, chatId } = tgInput();
+    if (!token || !chatId) { tgMsg('<span class="bad">Cần nhập token và chat ID.</span>'); return; }
+    tgMsg("Đang gửi…");
+    const r = await send({ cmd: "TEST_TELEGRAM", token, chatId });
+    tgMsg(r?.ok ? '<span class="ok">Đã gửi — kiểm tra Telegram.</span>' : `<span class="bad">Không gửi được: ${esc(r?.reason)}</span>`);
+  };
 
   $("#notifyEnabled").onchange = async () => {
     const on = $("#notifyEnabled").checked;

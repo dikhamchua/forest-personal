@@ -330,6 +330,18 @@ Cửa sổ Forest nằm ngoài trình duyệt, luôn nổi trên app khác (`flo
 
 ---
 
+## 12c. Thông báo Telegram
+
+- `fpState.telegram = { enabled, token, chatId }` (lưu cục bộ). Gửi bằng
+  `POST https://api.telegram.org/bot<token>/sendMessage` (`parse_mode=HTML`, tên cây được escape).
+- Tin khi cây lớn: tên cây · phút · tag · `+N xu (tổng)` · “Hôm nay: k cây sống”; khi bỏ cuộc: tên cây ·
+  `bỏ cuộc sau a/b phút`.
+- Options: nhập token, **Lấy chat ID** (`getUpdates`, cần đã Start bot), **Gửi thử**, Lưu. Kết quả gần nhất lưu ở
+  `lastTelegram`; popup cảnh báo nếu lần gửi gần nhất thất bại.
+- Dùng `host_permissions: <all_urls>` nên không cần quyền mới. Toast hệ thống đổi mặc định thành tắt.
+
+---
+
 ## 13. Vườn cây (`garden.html` + `garden.js`)
 
 Mô phỏng màn **Overview** của Forest: tab kỳ, plot isometric và biểu đồ phân bố
