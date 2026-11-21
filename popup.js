@@ -382,7 +382,7 @@ function startTicker() {
     const p = state.planting;
     const total = p.durationMin * 60 * 1000;
     const remain = new Date(p.endTime).getTime() - Date.now();
-    if (remain <= 0) { render(); return; }
+    if (remain <= 0) { stopTicker(); render(); return; }
     const ratio = Math.min(1, Math.max(0, 1 - remain / total));
     const ph = phaseOf(ratio);
     t.textContent = fmtRemain(remain);

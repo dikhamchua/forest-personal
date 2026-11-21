@@ -30,6 +30,7 @@ const API_HOSTS = [
 ];
 const ALARM_DONE = "fpPlantingDone";
 const ALARM_FLOAT = "fpFloat";
+const ALARM_RECONCILE = "fpReconcile";
 const FLOAT_URL = "http://127.0.0.1:35731";
 
 /* ---------- Chặn trang bằng declarativeNetRequest ---------- */
@@ -300,7 +301,32 @@ function plantRecord(p, success) {
   };
 }
 
-async function finishPlanting(success) {
+let finishing = null;
+
+function finishPlanting(success) {
+  if (finishing) return finishing;
+  finishing = finishPlantingOnce(success).finally(() => { finishing = null; });
+  return finishing;
+}
+
+/* Alarm có thể không bắn (đóng/mở lại trình duyệt, reload extension) → đối soát:
+   phiên đã quá endTime thì kết thúc như thành công; chưa quá hạn thì hẹn lại alarm. */
+async function reconcilePlanting() {
+  const s = await loadState();
+  const p = s.planting;
+  if (!p) return false;
+  const end = new Date(p.endTime).getTime();
+  if (end <= Date.now()) {
+    const r = await finishPlanting(true);
+    broadcast({ type: "PLANTING_DONE", record: r.record, coins: r.coins ?? null });
+    return true;
+  }
+  const existing = await chrome.alarms.get(ALARM_DONE);
+  if (!existing) await chrome.alarms.create(ALARM_DONE, { when: end });
+  return false;
+}
+
+async function finishPlantingOnce(success) {
   const s = await loadState();
   const p = s.planting;
   if (!p) return { ok: false, error: "no_planting" };
@@ -345,9 +371,8 @@ async function finishPlanting(success) {
 }
 
 chrome.alarms.onAlarm.addListener(async (alarm) => {
-  if (alarm.name === ALARM_DONE) {
-    const r = await finishPlanting(true);
-    broadcast({ type: "PLANTING_DONE", record: r.record, coins: r.coins ?? null });
+  if (alarm.name === ALARM_DONE || alarm.name === ALARM_RECONCILE) {
+    await reconcilePlanting();
   }
 });
 
@@ -412,6 +437,7 @@ async function floatTick() {
   if (floatBusy) return;
   floatBusy = true;
   try {
+    await reconcilePlanting().catch(() => {});
     const res = await fetch(`${FLOAT_URL}/poll`, { cache: "no-store" });
     if (res.ok) {
       const cmd = await res.json().catch(() => null);
@@ -452,6 +478,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   (async () => {
     switch (msg?.cmd) {
       case "GET_STATE": {
+        await reconcilePlanting().catch(() => {});
         const state = await loadState();
         sendResponse({ ok: true, build: BUILD, state, hosts: regionHosts(state.region) });
         break;
@@ -610,6 +637,8 @@ async function init() {
   await updateBlockRules(s);
   if (s.user?.id) refreshProfile().catch(() => {});
   chrome.alarms.create(ALARM_FLOAT, { periodInMinutes: 1 });
+  chrome.alarms.create(ALARM_RECONCILE, { periodInMinutes: 1 });
+  await reconcilePlanting().catch(() => {});
   if (s.floatEnabled) setFloatEnabled(true);
 }
 

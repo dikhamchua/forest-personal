@@ -78,6 +78,7 @@ Muốn tự chạy cùng Windows: bấm `Win+R` → `shell:startup` → tạo sh
 
 | Triệu chứng | Nguyên nhân | Cách xử lý |
 |---|---|---|
+| Timer về 0:00 nhưng cây chưa được ghi nhận (≤ 0.8.1) | Alarm kết thúc không bắn (đóng/mở lại trình duyệt, reload extension) | Cập nhật ≥ 0.8.2: phiên quá hạn tự được kết thúc khi mở popup hoặc trong vòng 1 phút |
 | Popup/Options kẹt “Đang tải…” | Tab được mở trước khi reload extension (context cũ) | Đóng tab/popup, mở lại; nếu có nút Thử lại thì bấm |
 | Lỗi `unknown_cmd` ở Options (ví dụ khi bấm Lấy chat ID) | Trang đã là bản mới nhưng service worker chưa reload | `brave://extensions` → reload card Forest Personal rồi thử lại |
 | Banner “Service worker đang chạy code cũ” | Chưa reload sau khi cập nhật file | `brave://extensions` → reload card; vẫn lỗi thì gỡ rồi Load unpacked lại |
@@ -153,7 +154,7 @@ Quyền tuỳ chọn không đặt trong `permissions` vì thêm quyền lúc re
 
 **Vì sao phải đặt thư mục cố định?** Chrome đọc trực tiếp thư mục unpacked; xoá hoặc đổi tên thì extension biến mất. Đổi đường dẫn thì Chrome coi là extension mới.
 
-**Đóng trình duyệt giữa chừng có mất cây?** Phiên trồng (giờ bắt đầu/kết thúc) được lưu trong storage nên không mất khi service worker bị tạm dừng. Nếu đóng hẳn trình duyệt qua mốc kết thúc, extension hiện chưa có bước tự ghi nhận bù khi mở lại; hãy giữ trình duyệt mở trong lúc trồng.
+**Đóng trình duyệt giữa chừng có mất cây?** Phiên trồng (giờ bắt đầu/kết thúc) được lưu trong storage nên không mất khi service worker bị tạm dừng. Nếu đóng hẳn trình duyệt qua mốc kết thúc, khi mở lại extension tự ghi nhận cây là thành công (từ 0.8.2), nhưng thông báo Telegram/toast sẽ đến muộn. Nên giữ trình duyệt mở trong lúc trồng.
 
 **Phải để widget chạy không?** Không, chỉ là tiện ích. Tắt toggle trong Options thì extension ngừng poll.
 
@@ -171,6 +172,7 @@ Quyền tuỳ chọn không đặt trong `permissions` vì thêm quyền lúc re
 
 | Phiên bản | Nội dung chính |
 |---|---|
+| 0.8.2 | Sửa cây kẹt ở 0:00: đối soát phiên quá hạn khi khởi động, mở popup/widget và mỗi phút |
 | 0.8.1 | Phát hiện service worker chạy bản cũ qua `build.js`; báo rõ khi gặp `unknown_cmd` |
 | 0.8.0 | Thông báo Telegram (bot), toast hệ thống chuyển thành tuỳ chọn |
 | 0.7.4 | Nhớ thời lượng đã chọn (không về 25′), popup cảnh báo khi thông báo không gửi được, ghi lại kết quả lần gửi gần nhất |
