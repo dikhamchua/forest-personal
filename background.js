@@ -3,6 +3,7 @@
    mốc kết thúc dùng chrome.alarms, popup/options nói chuyện qua runtime message. */
 
 import { api, configure, regionHosts } from "./api.js";
+import { BUILD } from "./build.js";
 import {
   loadState,
   saveState,
@@ -16,7 +17,6 @@ import {
   sync,
 } from "./storage.js";
 
-const BUILD = 3;                 // tăng khi đổi shape của message/response
 // Server chỉ nhận Origin của extension gốc. ID thật của extension này có thể khác
 // (Chrome giữ ID gán lần load đầu với bản unpacked), nên mọi request API được gắn
 // thêm Origin gốc bằng DNR — chỉ áp cho request do chính extension này khởi tạo.

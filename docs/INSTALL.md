@@ -79,6 +79,7 @@ Muốn tự chạy cùng Windows: bấm `Win+R` → `shell:startup` → tạo sh
 | Triệu chứng | Nguyên nhân | Cách xử lý |
 |---|---|---|
 | Popup/Options kẹt “Đang tải…” | Tab được mở trước khi reload extension (context cũ) | Đóng tab/popup, mở lại; nếu có nút Thử lại thì bấm |
+| Lỗi `unknown_cmd` ở Options (ví dụ khi bấm Lấy chat ID) | Trang đã là bản mới nhưng service worker chưa reload | `brave://extensions` → reload card Forest Personal rồi thử lại |
 | Banner “Service worker đang chạy code cũ” | Chưa reload sau khi cập nhật file | `brave://extensions` → reload card; vẫn lỗi thì gỡ rồi Load unpacked lại |
 | Đăng nhập lỗi 403 | Sai email/mật khẩu, hoặc tài khoản chỉ dùng đăng nhập mạng xã hội | Kiểm tra mật khẩu Forest; vùng đúng (Global/China) |
 | Đăng nhập lỗi 488 | Tài khoản cần chuyển vùng/khôi phục trong app Forest | Xử lý trong app Forest rồi thử lại |
@@ -170,6 +171,7 @@ Quyền tuỳ chọn không đặt trong `permissions` vì thêm quyền lúc re
 
 | Phiên bản | Nội dung chính |
 |---|---|
+| 0.8.1 | Phát hiện service worker chạy bản cũ qua `build.js`; báo rõ khi gặp `unknown_cmd` |
 | 0.8.0 | Thông báo Telegram (bot), toast hệ thống chuyển thành tuỳ chọn |
 | 0.7.4 | Nhớ thời lượng đã chọn (không về 25′), popup cảnh báo khi thông báo không gửi được, ghi lại kết quả lần gửi gần nhất |
 | 0.7.3 | Sửa thông báo: trạng thái phản ánh quyền thật, nút Gửi thử, chẩn đoán lý do |

@@ -1,9 +1,10 @@
+import { BUILD } from "./build.js";
 /* Trang cài đặt: đăng nhập, hồ sơ/xu, đồng bộ, chặn trang, lịch sử.
    Không dùng inline handler (CSP MV3). */
 
 const $ = (sel, el = document) => el.querySelector(sel);
 const EXPECTED_ID = "kjacjjdnoddnpbbcjilcajfhhbdhkpgk";
-const EXPECTED_BUILD = 3;
+const EXPECTED_BUILD = BUILD;
 
 /* Timeout để trang không kẹt "Đang tải…" khi service worker chết hoặc trang
    thuộc phiên bản extension cũ (context invalidated). */
@@ -11,7 +12,13 @@ function send(msg, timeoutMs = 8000) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error("service worker không phản hồi (timeout)")), timeoutMs);
     chrome.runtime.sendMessage(msg).then(
-      (r) => { clearTimeout(timer); resolve(r); },
+      (r) => {
+        clearTimeout(timer);
+        if (r && r.ok === false && r.error === "unknown_cmd") {
+          r.error = "Background chạy bản cũ — mở brave://extensions và bấm reload Forest Personal rồi thử lại";
+        }
+        resolve(r);
+      },
       (e) => { clearTimeout(timer); reject(e); },
     );
   });

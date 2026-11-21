@@ -1,3 +1,4 @@
+import { BUILD } from "./build.js";
 /* Popup: card xanh kiểu Forest — gear, Blocklist mode, +, cây tròn, timer lớn,
    chọn cây (hiển thị tên), chip thời lượng. Không dùng inline handler (CSP MV3). */
 
@@ -279,7 +280,7 @@ async function render() {
     selectedDuration = Number(state.selectedDuration);
   }
   send({ cmd: "ACK_BADGE" }).catch(() => {});
-  const stale = res.build !== 3;
+  const stale = res.build !== BUILD;
   const staleNote = stale
     ? `<div class="note warn">⚠️ Background đang chạy code cũ — reload extension ở <code>brave://extensions</code>.</div>`
     : "";
