@@ -46,107 +46,108 @@ const fmtDate = (iso) => (iso ? new Date(iso).toLocaleString("vi-VN") : "—");
 const tagTitle = (state, id) =>
   (state.tags?.length ? state.tags : TAG_FALLBACK).find((t) => t.tagId === id)?.title || `Tag ${id}`;
 
+function switchHtml(id, label, on) {
+  return `<label class="switch"><input type="checkbox" id="${id}"${on ? " checked" : ""}><span class="track"></span><span>${label}</span></label>`;
+}
+
+function cardHead(icon, title, desc, right = "") {
+  return `<div class="cardHead"><div class="ic">${icon}</div><div><h2>${title}</h2>${desc ? `<p>${desc}</p>` : ""}</div>${right ? `<div class="right">${right}</div>` : ""}</div>`;
+}
+
 function accountSection(state) {
   if (!state.user) {
     return `
-      <section>
-        <h2>Tài khoản</h2>
-        <p class="hint">Đăng nhập bằng email/mật khẩu tài khoản Forest. Server trả cookie phiên
-          <code>remember_token</code>; extension lưu lại token này để khôi phục phiên nếu cookie bị xoá.</p>
-        <div class="row">
-          <select id="region">
-            <option value="global"${state.region === "global" ? " selected" : ""}>Global (forestapp.cc)</option>
-            <option value="china"${state.region === "china" ? " selected" : ""}>China (upwardsware.com)</option>
-          </select>
-        </div>
-        <div class="row"><input id="email" type="email" placeholder="Email" autocomplete="username"></div>
-        <div class="row"><input id="password" type="password" placeholder="Mật khẩu" autocomplete="current-password"></div>
-        <div class="row"><button id="signin">Đăng nhập</button><span id="loginMsg" class="toast"></span></div>
-        <p class="hint">Chạy song song được với Forest gốc: extension tự gắn
-          <code>Origin: chrome-extension://${EXPECTED_ID}</code> cho request API bằng rule DNR
-          (chỉ áp cho request của chính nó).</p>
-      </section>`;
+      <div class="hero"><div class="login">
+        <h2>Đăng nhập Forest</h2>
+        <p>Dùng email và mật khẩu tài khoản Forest của bạn.</p>
+        <select id="region">
+          <option value="global"${state.region === "global" ? " selected" : ""}>Global (forestapp.cc)</option>
+          <option value="china"${state.region === "china" ? " selected" : ""}>China (upwardsware.com)</option>
+        </select>
+        <input id="email" type="email" placeholder="Email" autocomplete="username">
+        <input id="password" type="password" placeholder="Mật khẩu" autocomplete="current-password">
+        <button id="signin">Đăng nhập</button>
+        <span id="loginMsg"></span>
+      </div></div>`;
   }
 
   const u = state.user;
   const boostEnd = u.boost?.end ? new Date(u.boost.end) : null;
   const boostActive = boostEnd && boostEnd.getTime() > Date.now();
+  const hours = Math.floor((u.totalMinutes ?? 0) / 60);
+  const initial = (u.name || u.email || "?").trim().charAt(0).toUpperCase();
+  const tile = (k, v) => `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div></div>`;
   return `
-    <section>
-      <h2>Tài khoản</h2>
-      <div class="stats">
-        <span>🪙 Xu<br><b>${u.coin ?? 0}</b></span>
-        <span>🌳 Cây sống<br><b>${u.healthTreeCount ?? 0}</b></span>
-        <span>🥀 Cây chết<br><b>${u.deadTreeCount ?? 0}</b></span>
-        <span>⏱ Tổng phút<br><b>${u.totalMinutes ?? 0}</b></span>
-        <span>💎 Gem<br><b>${u.gem ?? 0}</b></span>
+    <div class="hero">
+      <div class="who">
+        <div class="avatar">${esc(initial)}</div>
+        <div>
+          <div class="name">${esc(u.name || "—")}</div>
+          <div class="meta">${esc(u.email || "")} · ID ${u.id ?? "?"}</div>
+          ${boostActive ? `<span class="boost">Boost x${u.boost.rate ?? 2} đến ${fmtDate(u.boost.end)}</span>` : ""}
+        </div>
       </div>
-      <p><b>${esc(u.name || "—")}</b> · ${esc(u.email || "")} · ID ${u.id ?? "?"}
-        ${boostActive ? `<span class="ok">· Boost x${u.boost.rate ?? 2} đến ${fmtDate(u.boost.end)}</span>` : ""}</p>
-      <div class="row">
-        <button id="refresh" class="ghost">Cập nhật hồ sơ</button>
-        <button id="garden" class="ghost">Vườn cây</button>
-        <button id="check" class="ghost">Kiểm tra kết nối</button>
-        <button id="signout" class="ghost danger-ghost">Đăng xuất</button>
+      <div class="tiles">
+        ${tile("🪙 Xu", (u.coin ?? 0).toLocaleString("vi-VN"))}
+        ${tile("🌳 Cây sống", (u.healthTreeCount ?? 0).toLocaleString("vi-VN"))}
+        ${tile("🥀 Cây chết", (u.deadTreeCount ?? 0).toLocaleString("vi-VN"))}
+        ${tile("⏱ Giờ tập trung", hours.toLocaleString("vi-VN"))}
+        ${tile("💎 Gem", (u.gem ?? 0).toLocaleString("vi-VN"))}
       </div>
-      <p id="accountMsg" class="toast hint">Cookie phiên: <span id="cookieState">đang kiểm tra…</span></p>
-    </section>`;
+      <div class="heroActions">
+        <button id="garden" class="solid">🌳 Vườn cây</button>
+        <button id="refresh">Cập nhật hồ sơ</button>
+        <button id="check">Kiểm tra kết nối</button>
+        <button id="signout" class="out">Đăng xuất</button>
+      </div>
+      <div id="accountMsg" class="heroNote">Cookie phiên: <span id="cookieState">đang kiểm tra…</span></div>
+    </div>`;
 }
 
 function syncSection(state) {
   const last = state.lastSyncedAt ? fmtDate(state.lastSyncedAt) : "chưa sync";
   return `
-    <section>
-      <h2>Đồng bộ</h2>
-      <p class="hint">Đẩy cây đang chờ lên server (từng cây một, <code>POST /plants</code>), rồi kéo 30 ngày
-        gần nhất (<code>GET /plants?from_date=…</code>). Xu được server cộng sau khi cây được ghi nhận.</p>
+    <section class="card">
+      ${cardHead("🔄", "Đồng bộ", "Đẩy cây đang chờ lên server rồi kéo lịch sử 30 ngày gần nhất. Xu được server cộng sau khi cây được ghi nhận.",
+        `<button id="sync">Sync ngay</button>`)}
       <div class="stats">
-        <span>Chờ đẩy<br><b>${state.pendingPlants.length}</b></span>
-        <span>Cây trên server<br><b>${(state.serverPlants || []).length}</b></span>
-        <span>Lần cuối<br><b style="font-size:13px">${last}</b></span>
+        <div class="stat"><div class="k">Chờ đẩy</div><div class="v">${state.pendingPlants.length}</div></div>
+        <div class="stat"><div class="k">Cây đã tải</div><div class="v">${(state.serverPlants || []).length}</div></div>
+        <div class="stat"><div class="k">Lần cuối</div><div class="v small">${last}</div></div>
       </div>
-      <div class="row">
-        <button id="sync">Sync ngay</button>
-        <span id="syncMsg" class="toast"></span>
-      </div>
-      ${state.syncError ? `<p class="bad">Lỗi gần nhất: ${esc(state.syncError)}</p>` : ""}
+      <div id="syncMsg" class="toast last"></div>
+      ${state.syncError ? `<p class="bad last">Lỗi gần nhất: ${esc(state.syncError)}</p>` : ""}
     </section>`;
 }
 
 function blockSection(state) {
   return `
-    <section>
-      <h2>Chặn trang khi tập trung</h2>
+    <section class="card">
+      ${cardHead("🚫", "Chặn trang khi tập trung", "Chuyển hướng các trang gây xao nhãng sang trang chặn. Whitelist chỉ bật khi allowlist có ít nhất một domain.")}
       <div class="row">
-        <label><input type="checkbox" id="blockEnabled"${state.blockEnabled ? " checked" : ""}> Bật chặn</label>
-        <label><input type="checkbox" id="whitelistMode"${state.whitelistMode ? " checked" : ""}> Whitelist (chặn tất cả trừ allowlist)</label>
+        ${switchHtml("blockEnabled", "Bật chặn", state.blockEnabled)}
+        ${switchHtml("whitelistMode", "Whitelist (chặn tất cả trừ allowlist)", state.whitelistMode)}
       </div>
       <div class="grid2">
-        <div>
-          <p class="hint">Blocklist — mỗi dòng một domain</p>
-          <textarea id="blocklist" rows="6">${esc(state.blocklist.join("\n"))}</textarea>
-        </div>
-        <div>
-          <p class="hint">Allowlist — chỉ dùng ở chế độ whitelist</p>
-          <textarea id="allowlist" rows="6">${esc(state.allowlist.join("\n"))}</textarea>
-        </div>
+        <div class="field"><label>Blocklist — mỗi dòng một domain</label>
+          <textarea id="blocklist" rows="8">${esc(state.blocklist.join("\n"))}</textarea></div>
+        <div class="field"><label>Allowlist — chỉ dùng ở chế độ whitelist</label>
+          <textarea id="allowlist" rows="8">${esc(state.allowlist.join("\n"))}</textarea></div>
       </div>
       <div class="row"><button id="saveBlock">Lưu</button><span id="blockMsg" class="toast"></span></div>
-      <p class="hint">Chế độ whitelist chỉ bật khi allowlist có ít nhất một domain (tránh chặn toàn bộ trình duyệt).</p>
     </section>`;
 }
 
 function floatSection(state) {
   return `
-    <section>
-      <h2>Cửa sổ nổi (always-on-top)</h2>
-      <div class="row">
-        <label><input type="checkbox" id="floatEnabled"${state.floatEnabled ? " checked" : ""}> Bật widget nổi trên các app khác</label>
-        <span id="floatMsg" class="toast"></span>
-      </div>
-      <p class="hint">Widget là app WPF riêng (không phải cửa sổ trình duyệt): chạy
-        <code>float/start-float.bat</code> một lần, nó luôn nổi trên cửa sổ khác.
-        Bật ô trên để extension đẩy trạng thái sang widget và nhận lệnh Start / Give up.</p>
+    <section class="card">
+      ${cardHead("🪟", "Widget nổi (always-on-top)", "App WPF riêng luôn nổi trên các cửa sổ khác, đồng bộ trạng thái và nhận lệnh Start / Give up. Chỉ Windows.")}
+      <div class="row">${switchHtml("floatEnabled", "Bật widget nổi", state.floatEnabled)}<span id="floatMsg" class="toast"></span></div>
+      <ol class="steps">
+        <li>Bật công tắc trên và chọn <b>Allow</b> quyền localhost.</li>
+        <li>Chạy <code>float\\start-float.bat</code> trong thư mục extension.</li>
+        <li>Kéo vùng trống của widget để di chuyển; ✕ để đóng.</li>
+      </ol>
     </section>`;
 }
 
@@ -154,17 +155,19 @@ function telegramSection(state) {
   const t = state.telegram || {};
   const last = state.lastTelegram;
   const lastHtml = last
-    ? `<p class="toast hint">Lần gửi gần nhất (${esc(new Date(last.at).toLocaleString("vi-VN"))}): ${
-        last.ok ? '<span class="ok">thành công</span>' : `<span class="bad">${esc(last.reason || "thất bại")}</span>`}</p>`
+    ? `<div class="last">Lần gửi gần nhất (${esc(new Date(last.at).toLocaleString("vi-VN"))}): ${
+        last.ok ? '<span class="ok">thành công</span>' : `<span class="bad">${esc(last.reason || "thất bại")}</span>`}</div>`
     : "";
   return `
-    <section>
-      <h2>Thông báo Telegram</h2>
-      <div class="row"><label><input type="checkbox" id="tgEnabled"${t.enabled ? " checked" : ""}> Gửi tin Telegram khi cây lớn / cây chết</label></div>
-      <div class="row"><input id="tgToken" type="password" placeholder="Bot token (từ @BotFather)" autocomplete="off" value="${esc(t.token || "")}"></div>
+    <section class="card">
+      ${cardHead("✈️", "Telegram", "Nhận tin khi cây lớn hoặc chết qua bot Telegram của bạn (khuyến nghị).",
+        switchHtml("tgEnabled", "", t.enabled))}
+      <div class="field"><label>Bot token</label>
+        <input id="tgToken" type="password" placeholder="123456:ABC… (từ @BotFather)" autocomplete="off" value="${esc(t.token || "")}"></div>
       <div class="row">
-        <input id="tgChat" type="text" placeholder="Chat ID" autocomplete="off" value="${esc(t.chatId || "")}">
-        <button id="tgFind" class="ghost">Lấy chat ID</button>
+        <div class="field" style="flex:1 1 220px"><label>Chat ID</label>
+          <input id="tgChat" type="text" placeholder="Bấm “Lấy chat ID” sau khi Start bot" autocomplete="off" value="${esc(t.chatId || "")}"></div>
+        <button id="tgFind" class="ghost" style="align-self:flex-end">Lấy chat ID</button>
       </div>
       <div class="row">
         <button id="tgSave">Lưu</button>
@@ -172,25 +175,22 @@ function telegramSection(state) {
         <span id="tgMsg" class="toast"></span>
       </div>
       ${lastHtml}
-      <p class="hint">Cách thiết lập: (1) mở Telegram, chat với <code>@BotFather</code> → <code>/newbot</code> → copy token;
-        (2) mở bot vừa tạo và bấm <b>Start</b> (gửi 1 tin bất kỳ);
-        (3) dán token rồi bấm <b>Lấy chat ID</b>; (4) <b>Lưu</b> và <b>Gửi thử</b>.
-        Token lưu cục bộ trong trình duyệt, chỉ dùng để gọi <code>api.telegram.org</code>.</p>
+      <ol class="steps">
+        <li>Chat với <code>@BotFather</code> → <code>/newbot</code> → copy token.</li>
+        <li>Mở bot vừa tạo, bấm <b>Start</b>.</li>
+        <li>Dán token → <b>Lấy chat ID</b> → bật công tắc → <b>Lưu</b> → <b>Gửi thử</b>.</li>
+      </ol>
     </section>`;
 }
 
 function notifySection(state) {
   return `
-    <section>
-      <h2>Thông báo hệ thống</h2>
-      <div class="row">
-        <label><input type="checkbox" id="notifyEnabled"> Hiện toast Windows khi cây lớn / cây chết</label>
-        <button id="notifyTest" class="ghost">Gửi thử</button>
-      </div>
-      <p id="notifyStatus" class="toast hint">Đang kiểm tra quyền…</p>
-      <p class="hint">Dùng <code>chrome.notifications</code> (quyền tuỳ chọn: Chrome sẽ hỏi khi bật).
-        Toast vẫn hiện khi Brave bị thu nhỏ; bấm vào toast để mở Vườn cây.
-        Nếu không thấy toast, kiểm tra Windows Settings → Hệ thống → Thông báo (bật cho Brave) và tắt Focus Assist.</p>
+    <section class="card">
+      ${cardHead("🔔", "Thông báo hệ thống", "Toast Windows qua <code>chrome.notifications</code> (tuỳ chọn). Bấm toast để mở Vườn cây.",
+        `<button id="notifyTest" class="ghost">Gửi thử</button>`)}
+      <div class="row"><label class="switch"><input type="checkbox" id="notifyEnabled"><span class="track"></span><span>Hiện toast khi cây lớn / cây chết</span></label></div>
+      <div id="notifyStatus" class="toast last">Đang kiểm tra quyền…</div>
+      <p class="hint">Không thấy toast: Windows Settings → Hệ thống → Thông báo (bật cho Brave) và tắt Focus Assist.</p>
     </section>`;
 }
 
@@ -209,7 +209,7 @@ async function refreshNotifyStatus(state) {
   const granted = !!r?.granted;
   box.checked = granted && state.notifyEnabled !== false;
   if (!granted) {
-    status.innerHTML = '<span class="bad">Chưa cấp quyền — tick ô trên hoặc bấm “Gửi thử” rồi chọn Allow.</span>';
+    status.innerHTML = '<span class="bad">Chưa cấp quyền — bật công tắc hoặc bấm “Gửi thử” rồi chọn Allow.</span>';
   } else if (r.level && r.level !== "granted") {
     status.innerHTML = `<span class="bad">Đã cấp quyền nhưng Brave/Windows chặn thông báo (mức: ${esc(r.level)}).</span>`;
   } else if (state.notifyEnabled === false) {
@@ -239,29 +239,27 @@ function historySection(state) {
   const plants = [...(state.serverPlants || [])]
     .sort((a, b) => new Date(b.startTime || 0) - new Date(a.startTime || 0))
     .slice(0, 60);
+  const treeOf = (gid) => state.treeTypes?.find((t) => Number(t.gid) === Number(gid));
 
-  const rows = plants
-    .map((p) => {
-      const mins = p.startTime && p.endTime
-        ? Math.round((new Date(p.endTime) - new Date(p.startTime)) / 60000)
-        : 0;
-      return `<tr>
-        <td>${p.isSuccess ? "🌳" : "🥀"}</td>
-        <td>${esc(tagTitle(state, p.tag))}</td>
-        <td>${esc(p.note || "")}</td>
-        <td class="num">${mins ? mins + "′" : ""}</td>
-        <td>${fmtDate(p.startTime)}</td>
-      </tr>`;
-    })
-    .join("");
+  const rows = plants.map((p) => {
+    const mins = p.startTime && p.endTime ? Math.round((new Date(p.endTime) - new Date(p.startTime)) / 60000) : 0;
+    const tree = treeOf(p.treeTypeGid);
+    const media = tree?.image
+      ? `<img src="${esc(tree.image)}" alt="" loading="lazy">`
+      : `<span class="em">${p.isSuccess ? "🌳" : "🥀"}</span>`;
+    return `<div class="hrow${p.isSuccess ? "" : " dead"}">
+      ${media}
+      <div><div class="t">${esc(tree?.title || `Cây #${p.treeTypeGid}`)}${p.isSuccess ? "" : " · 🥀"}</div>
+        <div class="s">${fmtDate(p.startTime)}${p.note ? ` · ${esc(p.note)}` : ""}</div></div>
+      <span class="tag">${esc(tagTitle(state, p.tag))}</span>
+      <span class="dur">${mins ? mins + "′" : ""}</span>
+    </div>`;
+  }).join("");
 
   return `
-    <section>
-      <h2>Lịch sử (60 cây gần nhất)</h2>
-      <table>
-        <thead><tr><th></th><th>Tag</th><th>Ghi chú</th><th class="num">Thời lượng</th><th>Bắt đầu</th></tr></thead>
-        <tbody>${rows || `<tr><td colspan="5" class="hint">Chưa có dữ liệu — bấm Sync.</td></tr>`}</tbody>
-      </table>
+    <section class="card">
+      ${cardHead("📜", "Lịch sử", "60 cây gần nhất.", `<button id="garden2" class="ghost">Mở Vườn cây</button>`)}
+      <div class="hist">${rows || '<div class="empty">Chưa có dữ liệu — bấm Sync ngay.</div>'}</div>
     </section>`;
 }
 
@@ -293,25 +291,59 @@ async function renderPage() {
   const hosts = res.hosts || { api: "(service worker cũ — chưa trả host)", auth: "" };
   const staleSw = res.build !== EXPECTED_BUILD;
 
+  const pill = $("#syncPill"), pillText = $("#syncPillText");
+  if (pill) {
+    const pending = state.pendingPlants.length;
+    pill.className = "pill " + (state.syncError ? "warn" : state.user ? "ok" : "");
+    pillText.textContent = !state.user ? "Chưa đăng nhập"
+      : state.syncError ? "Lỗi đồng bộ"
+      : pending ? `${pending} cây chờ sync` : "Đã đồng bộ";
+  }
+  const ver = $("#ver");
+  if (ver) ver.textContent = `v${chrome.runtime.getManifest().version} · bản dựng lại cho cá nhân`;
+
+  const tabs = [
+    ["overview", "Tổng quan", syncSection(state) + historySection(state)],
+    ["notify", "Thông báo", telegramSection(state) + notifySection(state)],
+    ["block", "Chặn trang", blockSection(state)],
+    ["widget", "Widget nổi", floatSection(state)],
+    ["advanced", "Nâng cao", `
+      <section class="card">
+        ${cardHead("🛠", "Thông tin kỹ thuật", "Dùng khi báo lỗi hoặc kiểm tra kết nối.")}
+        <dl class="info">
+          <dt>Phiên bản</dt><dd>${esc(chrome.runtime.getManifest().version)} (build ${EXPECTED_BUILD})</dd>
+          <dt>Extension ID</dt><dd><code>${esc(currentId() || "—")}</code></dd>
+          <dt>API</dt><dd><code>${esc(hosts.api)}</code></dd>
+          <dt>Auth</dt><dd><code>${esc(hosts.auth)}</code></dd>
+          <dt>Origin gửi kèm</dt><dd><code>chrome-extension://${EXPECTED_ID}</code> (rule DNR)</dd>
+          <dt>Vùng</dt><dd>${esc(state.region)}</dd>
+        </dl>
+      </section>`],
+  ];
+  const wanted = (location.hash || "").slice(1);
+  const active = tabs.some(([k]) => k === wanted) ? wanted : "overview";
+
+  app.className = "";
   app.innerHTML =
-    (staleSw ? `<section class="danger-zone">
-      <h2>⚠️ Service worker đang chạy code cũ</h2>
-      <p>Trang này là bản mới nhưng background chưa được nạp lại (response thiếu <code>build=${EXPECTED_BUILD}</code>).</p>
-      <p class="hint">Mở <code>brave://extensions</code> → bấm <b>reload</b> trên card Forest Personal,
-        hoặc dùng <code>dev/start-reloader.bat</code> cùng helper reloader để tự reload khi sửa file.</p>
+    (staleSw ? `<section class="card danger-zone">
+      ${cardHead("⚠️", "Service worker đang chạy code cũ",
+        `Trang này là bản mới nhưng background chưa được nạp lại. Mở <code>brave://extensions</code> → bấm <b>reload</b> ở card Forest Personal.`)}
     </section>` : "") +
     accountSection(state) +
-    syncSection(state) +
-    telegramSection(state) +
-    notifySection(state) +
-    floatSection(state) +
-    blockSection(state) +
-    historySection(state) +
-    `<p class="hint">API: <code>${esc(hosts.api)}</code> · Auth: <code>${esc(hosts.auth)}</code><br>
-      Extension ID: <code>${esc(currentId() || "—")}</code> ·
-      Origin gửi kèm API: <code>chrome-extension://${EXPECTED_ID}</code>
-      <span class="ok">(rule DNR)</span>
-    </p>`;
+    (`<nav class="tabs" role="tablist">${tabs.map(([k, label]) =>
+      `<button role="tab" data-tab="${k}" aria-selected="${k === active}">${label}</button>`).join("")}</nav>`) +
+    tabs.map(([k, , html]) => `<div class="panel" data-panel="${k}"${k === active ? "" : " hidden"}>${html}</div>`).join("");
+
+  for (const btn of app.querySelectorAll(".tabs button")) {
+    btn.onclick = () => {
+      const k = btn.dataset.tab;
+      history.replaceState(null, "", `#${k}`);
+      for (const b2 of app.querySelectorAll(".tabs button")) b2.setAttribute("aria-selected", String(b2 === btn));
+      for (const p of app.querySelectorAll(".panel")) p.hidden = p.dataset.panel !== k;
+    };
+  }
+  const g2 = $("#garden2");
+  if (g2) g2.onclick = () => chrome.tabs.create({ url: chrome.runtime.getURL("garden.html") });
 
   if (!state.user) {
     $("#signin").onclick = doSignIn;
