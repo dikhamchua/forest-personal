@@ -1,3 +1,4 @@
+if (new URLSearchParams(location.search).has("embed")) document.body.classList.add("embed");
 /* Vườn cây kiểu Forest Overview: tab Ngày/Tuần/Tháng/Năm, plot isometric và
    biểu đồ phân bố thời gian tập trung.
    Dữ liệu: serverPlants + pendingPlants; tự tải thêm khoảng ngày qua LOAD_RANGE. */

@@ -36,7 +36,7 @@ App WPF trong suốt luôn nổi trên các cửa sổ khác, đồng bộ với
 
 ### Cài đặt & trang chặn
 
-Hero hồ sơ (xu, cây sống/chết, giờ tập trung), các tab Tổng quan · Thông báo (Telegram, toast) · Chặn trang · Widget nổi · Nâng cao, lịch sử có ảnh cây.
+Hero hồ sơ (xu, cây sống/chết, giờ tập trung), các tab Tổng quan · Thông báo (Telegram, toast) · Chặn trang · Widget nổi · Nâng cao; tab Tổng quan nhúng sẵn Vườn cây.
 
 ![Cài đặt](docs/screenshots/options.png)
 

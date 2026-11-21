@@ -172,6 +172,7 @@ Quyền tuỳ chọn không đặt trong `permissions` vì thêm quyền lúc re
 
 | Phiên bản | Nội dung chính |
 |---|---|
+| 0.9.1 | Tab Tổng quan: bỏ danh sách lịch sử, nhúng thẳng Vườn cây (ô đất + biểu đồ) |
 | 0.9.0 | Thiết kế lại trang Cài đặt: hero hồ sơ, tab Tổng quan/Thông báo/Chặn trang/Widget/Nâng cao, công tắc, lịch sử có ảnh cây |
 | 0.8.2 | Sửa cây kẹt ở 0:00: đối soát phiên quá hạn khi khởi động, mở popup/widget và mỗi phút |
 | 0.8.1 | Phát hiện service worker chạy bản cũ qua `build.js`; báo rõ khi gặp `unknown_cmd` |

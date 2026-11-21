@@ -235,32 +235,26 @@ async function ensureNotifyPermission() {
   }
 }
 
-function historySection(state) {
-  const plants = [...(state.serverPlants || [])]
-    .sort((a, b) => new Date(b.startTime || 0) - new Date(a.startTime || 0))
-    .slice(0, 60);
-  const treeOf = (gid) => state.treeTypes?.find((t) => Number(t.gid) === Number(gid));
-
-  const rows = plants.map((p) => {
-    const mins = p.startTime && p.endTime ? Math.round((new Date(p.endTime) - new Date(p.startTime)) / 60000) : 0;
-    const tree = treeOf(p.treeTypeGid);
-    const media = tree?.image
-      ? `<img src="${esc(tree.image)}" alt="" loading="lazy">`
-      : `<span class="em">${p.isSuccess ? "🌳" : "🥀"}</span>`;
-    return `<div class="hrow${p.isSuccess ? "" : " dead"}">
-      ${media}
-      <div><div class="t">${esc(tree?.title || `Cây #${p.treeTypeGid}`)}${p.isSuccess ? "" : " · 🥀"}</div>
-        <div class="s">${fmtDate(p.startTime)}${p.note ? ` · ${esc(p.note)}` : ""}</div></div>
-      <span class="tag">${esc(tagTitle(state, p.tag))}</span>
-      <span class="dur">${mins ? mins + "′" : ""}</span>
-    </div>`;
-  }).join("");
-
+function gardenSection() {
   return `
     <section class="card">
-      ${cardHead("📜", "Lịch sử", "60 cây gần nhất.", `<button id="garden2" class="ghost">Mở Vườn cây</button>`)}
-      <div class="hist">${rows || '<div class="empty">Chưa có dữ liệu — bấm Sync ngay.</div>'}</div>
+      ${cardHead("🌳", "Vườn cây", "Cây đã trồng theo ngày, tuần, tháng, năm.", `<button id="garden2" class="ghost">Mở toàn trang</button>`)}
+      <iframe id="gardenFrame" class="gardenFrame" src="garden.html?embed=1" title="Vườn cây"></iframe>
     </section>`;
+}
+
+/* iframe cùng origin → đo chiều cao nội dung để không có thanh cuộn kép */
+function fitGardenFrame() {
+  const f = $("#gardenFrame");
+  if (!f) return;
+  const fit = () => {
+    const doc = f.contentDocument;
+    if (doc?.body) f.style.height = `${doc.documentElement.scrollHeight}px`;
+  };
+  f.addEventListener("load", () => {
+    fit();
+    try { new ResizeObserver(fit).observe(f.contentDocument.body); } catch { /* ignore */ }
+  });
 }
 
 function showError(err) {
@@ -303,7 +297,7 @@ async function renderPage() {
   if (ver) ver.textContent = `v${chrome.runtime.getManifest().version} · bản dựng lại cho cá nhân`;
 
   const tabs = [
-    ["overview", "Tổng quan", syncSection(state) + historySection(state)],
+    ["overview", "Tổng quan", syncSection(state) + gardenSection()],
     ["notify", "Thông báo", telegramSection(state) + notifySection(state)],
     ["block", "Chặn trang", blockSection(state)],
     ["widget", "Widget nổi", floatSection(state)],
@@ -342,6 +336,7 @@ async function renderPage() {
       for (const p of app.querySelectorAll(".panel")) p.hidden = p.dataset.panel !== k;
     };
   }
+  fitGardenFrame();
   const g2 = $("#garden2");
   if (g2) g2.onclick = () => chrome.tabs.create({ url: chrome.runtime.getURL("garden.html") });
 

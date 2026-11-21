@@ -142,20 +142,7 @@
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   textarea { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 13px; resize: vertical; }
 
-  /* history */
-  .hist { display: flex; flex-direction: column; }
-  .hrow {
-    display: grid; grid-template-columns: 38px 1fr auto auto; gap: 12px; align-items: center;
-    padding: 8px 4px; border-bottom: 1px solid var(--border);
-  }
-  .hrow:last-child { border-bottom: 0; }
-  .hrow img, .hrow .em { width: 34px; height: 34px; object-fit: contain; display: grid; place-items: center; font-size: 22px; }
-  .hrow.dead img { filter: grayscale(1); opacity: .55; }
-  .hrow .t { font-weight: 600; font-size: 13.5px; }
-  .hrow .s { color: var(--muted); font-size: 12px; margin-top: 1px; }
-  .hrow .tag { font-size: 11.5px; padding: 2px 8px; border-radius: 999px; background: var(--pill-bg); color: var(--pill-fg); }
-  .hrow .dur { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 12.5px; min-width: 38px; text-align: right; }
-  .empty { text-align: center; color: var(--muted); padding: 22px 0; }
+  .gardenFrame { display: block; width: 100%; height: 900px; border: 0; border-radius: 12px; background: transparent; }
 
   dl.info { display: grid; grid-template-columns: max-content 1fr; gap: 8px 16px; margin: 0; font-size: 13px; }
   dl.info dt { color: var(--muted); }
