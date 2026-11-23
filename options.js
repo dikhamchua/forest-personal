@@ -278,6 +278,7 @@ function chTitle(state, p) {
   if ((m = key.match(/^daily_task_focus_(\d+)_tree_(\d+)$/))) return `Trồng ${treeName(state, Number(m[2]))} ${m[1]} lần`;
   if ((m = key.match(/^daily_task_focus_(\d+)$/))) return `Trồng cây bất kỳ ${m[1]} lần`;
   if ((m = key.match(/^daily_task_duration_(\d+)$/))) return `Trồng cây bất kỳ ${m[1]} phút`;
+  if ((m = key.match(/^daily_task_duration_(\d+)_tree_(\d+)$/))) return `Trồng ${treeName(state, Number(m[2]))} ${m[1]} phút`;
   if ((m = key.match(/^tree_type_(\d+)_title$/))) return treeName(state, Number(m[1]));
   if (key === "每日打卡") return "Điểm danh hằng ngày";
   return key || `Thử thách #${p.challengeDifficultyId ?? p.id ?? "?"}`;
@@ -340,11 +341,14 @@ function checkInCard(state, list) {
     ) ui = { cls: "claimable", inner: claimBtn(p, "Điểm danh") };
     else if (prev && chState(prev) === "done" && Number.isFinite(at(p)) && now < at(p)) {
       nextAvail ??= p.availableAt;
-      ui = { cls: "cooling", inner: "…" }; // Cooling: app hiện countdown trong ô
+      ui = { cls: "cooling", inner: `⏳ ${esc(fmtLeft(p.availableAt))}` }; // countdown trong ô như app
     } else ui = { cls: "unactivated", inner: "🔒" };
     prev = p;
     return `<div class="ciTile ${ui.cls}" title="${esc(chTitle(state, p))}">${ui.inner}</div>`;
   }).join("");
+
+  // App pad thêm ô Unactivated cho đủ 3 (toCheckInState: 3 - size).
+  const pads = `<div class="ciTile unactivated">🔒</div>`.repeat(Math.max(0, 3 - sorted.length));
 
   // App chỉ hiện "Làm mới sau" khi có ô Cooling hoặc lượt điểm danh kế còn hạn
   // (due_at tương lai); dueAt đã qua thì ẩn, không hiện "đã hết hạn".
@@ -352,7 +356,7 @@ function checkInCard(state, list) {
   const left = fmtLeft(nextAvail || nextDue);
   return `<section class="card">
     <div class="chSecHead"><h3>Điểm danh hằng ngày</h3>${left ? `<span class="ref">Làm mới sau ${esc(left)}</span>` : ""}</div>
-    <div class="ciRow">${tiles}</div>
+    <div class="ciRow">${tiles}${pads}</div>
   </section>`;
 }
 
