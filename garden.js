@@ -438,7 +438,8 @@ function render() {
 
   $("#label").textContent = labelFor();
   const now = Date.now();
-  $("#today").hidden = now >= from.getTime() && now <= to.getTime();
+  const atToday = now >= from.getTime() && now <= to.getTime();
+  $("#today").disabled = atToday; // luôn hiện như app; mờ đi khi đang ở hôm nay
   $("#cnt-alive").textContent = trees.length - dead;
   $("#cnt-dead").textContent = dead;
   $("#plot").innerHTML = plotSvg(list);

@@ -65,6 +65,7 @@
     cursor: pointer;
   }
   .todayBtn:hover { opacity: .75; }
+  .todayBtn:disabled { opacity: .35; cursor: default; }
   .iconBtn {
     width: 40px; height: 40px;
     padding: 0;
@@ -128,7 +129,7 @@
 
   <div class="nav">
     <button class="iconBtn" id="prev" title="Trước">‹</button>
-    <div class="label"><span id="label">—</span><button class="todayBtn" id="today" title="Về hôm nay" hidden>↺</button></div>
+    <div class="label"><span id="label">—</span><button class="todayBtn" id="today" title="Về hôm nay">↺</button></div>
     <button class="iconBtn" id="next" title="Sau">›</button>
   </div>
 

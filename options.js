@@ -319,14 +319,37 @@ function monthlyHero(state, p) {
   </div>`;
 }
 
-function checkInCard(list) {
+/* Tracking thời gian điểm danh như app (ChallengeManagerKt.toCheckInState):
+   sort theo available_at, duyệt tuần tự 3 ô — ô đầu tiên có available_at tương lai
+   là ô "Cooling" → header "Làm mới sau" đếm về available_at đó, không phải due_at. */
+function checkInCard(state, list) {
   if (!list.length) return "";
-  const tiles = list.map((p) => {
+  const now = Date.now();
+  const at = (p) => (p.availableAt ? new Date(p.availableAt).getTime() : NaN);
+  const sorted = [...list].sort((a, b) => at(a) - at(b));
+
+  let prev = null;      // ô ngay trước
+  let nextAvail = null; // available_at của ô Cooling đầu tiên (header countdown)
+  const tiles = sorted.map((p) => {
     const st = chState(p);
-    const inner = st === "claimable" ? claimBtn(p, "Điểm danh") : st === "done" ? "✓ Đã nhận" : `${p.progress}/${p.target}`;
-    return `<div class="ciTile ${st}">${inner}</div>`;
+    let ui;
+    if (st === "done") ui = { cls: "done", inner: "✓ Đã nhận" };
+    else if (
+      st === "claimable" ||
+      (prev && chState(prev) === "done" && Number.isFinite(at(p)) && now >= at(p))
+    ) ui = { cls: "claimable", inner: claimBtn(p, "Điểm danh") };
+    else if (prev && chState(prev) === "done" && Number.isFinite(at(p)) && now < at(p)) {
+      nextAvail ??= p.availableAt;
+      ui = { cls: "cooling", inner: "…" }; // Cooling: app hiện countdown trong ô
+    } else ui = { cls: "unactivated", inner: "🔒" };
+    prev = p;
+    return `<div class="ciTile ${ui.cls}" title="${esc(chTitle(state, p))}">${ui.inner}</div>`;
   }).join("");
-  const left = fmtLeft(list.find((p) => p.dueAt)?.dueAt);
+
+  // App chỉ hiện "Làm mới sau" khi có ô Cooling hoặc lượt điểm danh kế còn hạn
+  // (due_at tương lai); dueAt đã qua thì ẩn, không hiện "đã hết hạn".
+  const nextDue = sorted.find((p) => p.dueAt && new Date(p.dueAt).getTime() > now)?.dueAt;
+  const left = fmtLeft(nextAvail || nextDue);
   return `<section class="card">
     <div class="chSecHead"><h3>Điểm danh hằng ngày</h3>${left ? `<span class="ref">Làm mới sau ${esc(left)}</span>` : ""}</div>
     <div class="ciRow">${tiles}</div>
@@ -389,7 +412,7 @@ function challengeSection(state) {
       ${list.length ? "" : '<div class="chEmpty">Chưa có thử thách nào — bấm Tải lại.</div>'}
     </section>
     ${monthly ? monthlyHero(state, monthly) : ""}
-    ${checkInCard(checkIn)}
+    ${checkInCard(state, checkIn)}
     ${dailyCard(state, daily)}
     <section class="card">
       ${cardHead("🎁", "Vật phẩm có thể nhận", `${avail.length} mục`)}
