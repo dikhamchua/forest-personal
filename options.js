@@ -242,6 +242,232 @@ function gardenSection() {
       <iframe id="gardenFrame" class="gardenFrame" src="garden.html?embed=1" title="Vườn cây"></iframe>
     </section>`;
 }
+/* ---------- Focus challenge ---------- */
+
+/* Server trả status "completed" (đạt mục tiêu, chưa nhận → hộp quà chưa mở trong app)
+   và "reward_delivered" (đã nhận). Các giá trị khác coi là đang làm. */
+const CH_DONE = new Set(["reward_delivered", "claimed"]);
+
+const chState = (p) => {
+  const s = String(p.status || "").toLowerCase();
+  if (CH_DONE.has(s) || p.rewardDeliveredAt) return "done";
+  if (s === "claimable" || s === "completed" || (p.target > 0 && p.progress >= p.target)) return "claimable";
+  return "progress";
+};
+
+const chKind = (p) => String(p.challengeDifficulty?.challenge?.kind || "").toLowerCase();
+const chKey = (p) => p.challengeDifficulty?.challenge?.titleKey || "";
+const isMonthly = (p) => chKind(p) === "monthly";
+const isCheckIn = (p) => !isMonthly(p) && !/^daily_task_/.test(chKey(p));
+
+/* gid cây gắn với thử thách: từ key (tree_type_177_title, daily_task_focus_1_tree_36)
+   hoặc từ challenge_difficulty.tree_type nếu server trả số. */
+function chTreeGid(p) {
+  const m = chKey(p).match(/tree_type_(\d+)|_tree_(\d+)$/);
+  if (m) return Number(m[1] || m[2]);
+  const n = Number(p.challengeDifficulty?.treeType);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+const treeOf = (state, gid) => (gid == null ? null : (state.treeTypes || []).find((t) => t.gid === gid) || null);
+const treeName = (state, gid) => treeOf(state, gid)?.title || `Cây #${gid}`;
+
+function chTitle(state, p) {
+  const key = chKey(p);
+  let m;
+  if ((m = key.match(/^daily_task_focus_(\d+)_tree_(\d+)$/))) return `Trồng ${treeName(state, Number(m[2]))} ${m[1]} lần`;
+  if ((m = key.match(/^daily_task_focus_(\d+)$/))) return `Trồng cây bất kỳ ${m[1]} lần`;
+  if ((m = key.match(/^daily_task_duration_(\d+)$/))) return `Trồng cây bất kỳ ${m[1]} phút`;
+  if ((m = key.match(/^tree_type_(\d+)_title$/))) return treeName(state, Number(m[1]));
+  if (key === "每日打卡") return "Điểm danh hằng ngày";
+  return key || `Thử thách #${p.challengeDifficultyId ?? p.id ?? "?"}`;
+}
+
+const chPct = (p) => (p.target ? Math.min(100, Math.round((p.progress / p.target) * 100)) : 0);
+
+function fmtLeft(iso) {
+  const ms = iso ? new Date(iso) - Date.now() : NaN;
+  if (Number.isNaN(ms)) return "";
+  if (ms <= 0) return "đã hết hạn";
+  const mins = Math.floor(ms / 60000);
+  const d = Math.floor(mins / 1440), h = Math.floor((mins % 1440) / 60), m = mins % 60;
+  return d ? `${d}d ${h}h` : `${h}h ${m}m`;
+}
+
+const claimBtn = (p, label = "Nhận thưởng") => `<button class="claim" data-claim="${p.id}">${label}</button>`;
+
+function monthlyHero(state, p) {
+  const gid = chTreeGid(p);
+  const tree = treeOf(state, gid);
+  const st = chState(p);
+  const act =
+    st === "claimable" ? claimBtn(p)
+    : st === "done" ? `<span>Đã nhận thưởng ✓</span>`
+    : `<span>${p.progress}/${p.target}</span>`;
+  const desc = st === "progress" ? "Hoàn thành thử thách để mở khoá cây này." : "Bạn đã hoàn thành thử thách này!";
+  const img = tree?.image
+    ? `<img class="chTree" src="${esc(tree.image)}" alt="${esc(treeName(state, gid))}" loading="lazy">`
+    : `<span class="chTreeFb">🌳</span>`;
+  return `<div class="chHero">
+    <div>
+      <div class="t">Thử thách tháng</div>
+      <div class="d">${esc(desc)}</div>
+      <div class="act">${act}</div>
+      <div class="left">⏱ Kết thúc sau ${esc(fmtLeft(p.dueAt) || "—")}</div>
+    </div>
+    <div class="r">${img}<span class="pill">${esc(gid != null ? treeName(state, gid) : chTitle(state, p))}</span></div>
+  </div>`;
+}
+
+function checkInCard(list) {
+  if (!list.length) return "";
+  const tiles = list.map((p) => {
+    const st = chState(p);
+    const inner = st === "claimable" ? claimBtn(p, "Điểm danh") : st === "done" ? "✓ Đã nhận" : `${p.progress}/${p.target}`;
+    return `<div class="ciTile ${st}">${inner}</div>`;
+  }).join("");
+  const left = fmtLeft(list.find((p) => p.dueAt)?.dueAt);
+  return `<section class="card">
+    <div class="chSecHead"><h3>Điểm danh hằng ngày</h3>${left ? `<span class="ref">Làm mới sau ${esc(left)}</span>` : ""}</div>
+    <div class="ciRow">${tiles}</div>
+  </section>`;
+}
+
+function dailyCard(state, list) {
+  if (!list.length) return "";
+  const rows = list.map((p) => {
+    const st = chState(p);
+    const label = st === "progress" ? `${p.progress}/${p.target}` : st === "done" ? "Đã nhận" : "Hoàn thành";
+    return `<div class="dc ${st}" data-pid="${p.id}">
+      <div class="ttl">${esc(chTitle(state, p))}</div>
+      <div class="row2">
+        <div class="bar"><i style="width:${chPct(p)}%"></i><span>${esc(label)}</span></div>
+        ${st === "claimable" ? claimBtn(p) : ""}
+      </div>
+    </div>`;
+  }).join("");
+  const left = fmtLeft(list.find((p) => p.dueAt)?.dueAt);
+  return `<section class="card">
+    <div class="chSecHead"><h3>Thử thách hằng ngày</h3>${left ? `<span class="ref">Làm mới sau ${esc(left)}</span>` : ""}</div>
+    ${rows}
+  </section>`;
+}
+
+let chAutoTried = false;
+
+function challengeSection(state) {
+  const list = state.challenges || [];
+  const avail = state.deliveryAvailable || [];
+  const claimed = state.deliveryClaimed || [];
+  const loadedAt = state.challengesLoadedAt ? fmtDate(state.challengesLoadedAt) : "chưa tải";
+
+  const monthly = list.find(isMonthly);
+  const checkIn = list.filter(isCheckIn);
+  const daily = list.filter((p) => !isMonthly(p) && !isCheckIn(p));
+
+  const itemChip = (it) => {
+    const contents = (it.content || []).map((c) =>
+      `<span class="chItem">${c.iconImageUrl ? `<img src="${esc(c.iconImageUrl)}" alt="">` : ""}${esc(c.titleKey || c.type)} ×${c.value}</span>`,
+    ).join("");
+    return `<div class="chItem" data-iid="${it.id}">
+      ${it.iconImageUrl ? `<img src="${esc(it.iconImageUrl)}" alt="">` : ""}
+      <span>${esc(it.titleKey || `Vật phẩm #${it.id}`)}</span>
+      ${contents}
+      <button class="claim" data-claim-item="${it.id}">Claim</button>
+    </div>`;
+  };
+
+  const itemList = avail.length
+    ? `<div class="chItems">${avail.map(itemChip).join("")}</div>`
+    : `<div class="chEmpty">Không có vật phẩm nào để claim.</div>`;
+
+  return `
+    <section class="card">
+      ${cardHead("🏆", "Thử thách tập trung", `Cập nhật: ${esc(loadedAt)}`, `<button id="chDiag" class="ghost">Chẩn đoán</button> <button id="chReload" class="ghost">Tải lại</button>`)}
+      <div class="chMsg" id="chMsg"></div>
+      <pre id="chDiagOut" class="chMsg" style="white-space:pre-wrap;word-break:break-all;user-select:text" hidden></pre>
+      ${list.length ? "" : '<div class="chEmpty">Chưa có thử thách nào — bấm Tải lại.</div>'}
+    </section>
+    ${monthly ? monthlyHero(state, monthly) : ""}
+    ${checkInCard(checkIn)}
+    ${dailyCard(state, daily)}
+    <section class="card">
+      ${cardHead("🎁", "Vật phẩm có thể nhận", `${avail.length} mục`)}
+      ${itemList}
+      ${claimed.length ? `<div class="last">Đã nhận gần đây: ${claimed.slice(0, 5).map((it) => esc(it.titleKey || `#${it.id}`)).join(", ")}</div>` : ""}
+    </section>`;
+}
+
+async function wireChallenges(state) {
+  const msg = $("#chMsg");
+  // Ảnh cây remote lỗi (offline/hotlink) → quay về emoji.
+  for (const im of document.querySelectorAll("img.chTree")) {
+    im.addEventListener("error", () => {
+      const fb = document.createElement("span");
+      fb.className = "chTreeFb";
+      fb.textContent = "🌳";
+      im.replaceWith(fb);
+    }, { once: true });
+  }
+  // Mỗi lần mở trang: tự tải thử thách; nếu thiếu ảnh/tên cây thì nạp catalog loại cây.
+  if (state.user && !chAutoTried) {
+    chAutoTried = true;
+    (async () => {
+      const r = await send({ cmd: "GET_CHALLENGES" }).catch(() => null);
+      const list = r?.ok ? r.challenges : state.challenges || [];
+      const gids = list.map(chTreeGid).filter((g) => g != null);
+      const missing = gids.some((g) => !treeOf(state, g)?.image);
+      if (missing) await send({ cmd: "LOAD_CATALOG" }).catch(() => null);
+      if (r?.ok || missing) render();
+    })();
+  }
+  const reload = $("#chReload");
+  const diag = $("#chDiag");
+  if (diag) diag.onclick = async () => {
+    const out = $("#chDiagOut");
+    out.hidden = false;
+    out.textContent = "Đang chẩn đoán…";
+    const r = await send({ cmd: "DIAG_CHALLENGE" }).catch((e) => ({ ok: false, error: String(e?.message || e) }));
+    if (!r?.ok) {
+      out.textContent = r?.error === "unknown_cmd"
+        ? "Service worker đang chạy code CŨ (không biết lệnh DIAG_CHALLENGE). Bấm reload ở card Forest Personal trong brave://extensions."
+        : `Lỗi: ${r?.error}`;
+      return;
+    }
+    out.textContent = JSON.stringify({ swBuild: r.build, pageBuild: EXPECTED_BUILD, ...r.diag }, null, 2);
+  };
+  if (reload) reload.onclick = async () => {
+    if (msg) msg.textContent = "Đang tải…";
+    const r = await send({ cmd: "GET_CHALLENGES" });
+    if (!r?.ok) { if (msg) msg.innerHTML = `<span class="bad">Lỗi: ${esc(r?.error)}</span>`; return; }
+    render();
+  };
+  for (const btn of document.querySelectorAll("[data-claim]")) {
+    btn.onclick = async () => {
+      const pid = Number(btn.dataset.claim);
+      btn.disabled = true;
+      if (msg) msg.textContent = "Đang nhận…";
+      const r = await send({ cmd: "CLAIM_CHALLENGE_REWARD", progressId: pid });
+      if (msg) msg.innerHTML = r?.ok
+        ? `<span class="ok">Đã nhận${r.reward?.itemType?.titleKey ? ` · ${esc(r.reward.itemType.titleKey)}` : ""}.</span>`
+        : `<span class="bad">Lỗi ${r?.status ?? ""}: ${esc(r?.error)}</span>`;
+      if (r?.ok) render();
+      else btn.disabled = false;
+    };
+  }
+  for (const btn of document.querySelectorAll("[data-claim-item]")) {
+    btn.onclick = async () => {
+      const iid = Number(btn.dataset.claimItem);
+      btn.disabled = true;
+      const r = await send({ cmd: "CLAIM_DELIVERY_ITEM", itemId: iid });
+      if (msg) msg.innerHTML = r?.ok
+        ? `<span class="ok">Đã claim vật phẩm.</span>`
+        : `<span class="bad">Lỗi ${r?.status ?? ""}: ${esc(r?.error)}</span>`;
+      if (r?.ok) render();
+      else btn.disabled = false;
+    };
+  }
+}
 
 /* iframe cùng origin → đo chiều cao nội dung để không có thanh cuộn kép */
 function fitGardenFrame() {
@@ -298,6 +524,7 @@ async function renderPage() {
 
   const tabs = [
     ["overview", "Tổng quan", syncSection(state) + gardenSection()],
+    ["challenge", "Thử thách", challengeSection(state)],
     ["notify", "Thông báo", telegramSection(state) + notifySection(state)],
     ["block", "Chặn trang", blockSection(state)],
     ["widget", "Widget nổi", floatSection(state)],
@@ -339,6 +566,7 @@ async function renderPage() {
   fitGardenFrame();
   const g2 = $("#garden2");
   if (g2) g2.onclick = () => chrome.tabs.create({ url: chrome.runtime.getURL("garden.html") });
+  wireChallenges(state);
 
   if (!state.user) {
     $("#signin").onclick = doSignIn;

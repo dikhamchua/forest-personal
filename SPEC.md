@@ -184,6 +184,9 @@ idle --START_PLANTING--> planting --(alarm fpPlantingDone)--> success (POST)
 | `REFRESH_PROFILE` | — | `{ ok, user }` |
 | `CHECK_CONNECTION` | — | `{ ok, user }` / lỗi HTTP |
 | `UPDATE_SETTINGS` | `{ patch }` | `{ ok, state, rules }` |
+| `GET_CHALLENGES` | — | `{ ok, challenges, deliveryAvailable, deliveryClaimed, loadedAt }` |
+| `CLAIM_CHALLENGE_REWARD` | `{ progressId }` | `{ ok, reward, challenges }` |
+| `CLAIM_DELIVERY_ITEM` | `{ itemId }` | `{ ok, reward, deliveryAvailable, deliveryClaimed }` |
 
 Broadcast: `PLANTING_DONE`, `PLANTING_GAVE_UP`.
 
@@ -211,8 +214,19 @@ Broadcast: `PLANTING_DONE`, `PLANTING_GAVE_UP`.
   allowlist: [],
   whitelistMode: false,
   blockEnabled: true,
+  challenges: [ChallengeProgress],  // docs/CHALLENGE_API.md
+  challengesLoadedAt: ISO | null,
+  deliveryAvailable: [RewardItemType],
+  deliveryClaimed: [RewardItemType],
 }
 ```
+Challenge API (legacy REST, cùng host `c88fef96.forestapp.cc` nhưng **không** qua
+`/api/v1`): `GET /challenge/users/{uid}/progresses`, `PUT …/{pid}/reward`,
+`GET /delivery/users/{uid}/items/{available|claimed}`, `PUT …/{iid}/claim`.
+Microservices trên `forest-api.seekrtech.com`: starter challenge
+`GET /challenge/users/{uid}/progresses/new_user` + `POST …/progresses/events`.
+Chi tiết: `docs/CHALLENGE_API.md`.
+
 
 ---
 
@@ -349,16 +363,27 @@ thời gian tập trung.
 
 - **Tab**: Ngày / Tuần / Tháng / Năm; nút `‹` `›` dịch kỳ, nhãn ngày dạng
   “20 tháng 11, 2026 (Hôm nay)”, tuần “16 – 22 tháng 11, 2026”.
-- **Plot isometric (SVG)**: mặt đất 10×10 ô dạng kim cương (viewBox 640×400,
-  diamond 530×274), gradient cỏ + 2 khối đất hai cạnh, lưới 22 đường. Mỗi cây là
-  ảnh PNG theo `treeTypeGid` (fallback emoji), có bóng đổ; cây chết lọc
-  `feColorMatrix saturate=0` + opacity .62. Tối đa 100 cây/kỳ, dư hiện “+N cây nữa”.
-- **Số liệu kỳ**: cây sống / cây chết (góc plot), tổng phút.
+- **Giao diện** bám màn Overview của app 5.3.1: nền `#214c3b`, tab pill `#1f4334`
+  (ô chọn trắng), thẻ biểu đồ `#f4f4f4`, cột `#54a488`.
+- **Plot isometric (SVG)**: đảo cỏ N×N với N = max(10, ⌈√số cây⌉), ô cỏ xen kẽ
+  `#a3d044`/`#aed950`, viền cỏ + đất hai cạnh. Vẽ **mỗi cây** trong `plant.trees[]`
+  (không phải mỗi plant), ảnh theo `trees[].treeType` (fallback `treeTypeGid`, emoji);
+  ô chọn giả ngẫu nhiên cố định, vẽ từ sau ra trước; cây chết giảm bão hoà.
+- **Số liệu kỳ**: đếm như `SumHealthyAndDeadTreeUseCase` của app — cộng từng
+  `trees[]` theo `is_dead`; plant chưa có `trees` tính 1 cây theo `isSuccess`.
+  Tổng phút = Σ(end − start).
 - **Biểu đồ**: cột phút theo bucket — ngày 24 giờ (nhãn 00:00…23:00), tuần 7 ngày
-  (T2…CN), tháng theo ngày (nhãn 1,5,10…), năm 12 tháng; trục Y chia 5 phút, nhãn
-  “Tổng: N phút”.
+  (T2…CN), tháng theo ngày (nhãn 1,5,10…), năm 12 tháng; dòng
+  “Tổng thời gian tập trung: N phút”.
+- **Ngày tập trung nhiều nhất trong tuần** (ẩn ở tab Ngày): biểu đồ đường T2…CN,
+  giá trị = phút trung bình mỗi thứ = tổng phút của thứ đó / số lần thứ đó xuất hiện
+  trong kỳ tính tới hôm nay (như `GroupTotalPlantingTimeByTimeUnitUseCase`
+  `average=true`). Ngày cao nhất (giữ mọi ngày bằng nhau) được tô đậm. Mô tả theo
+  chuỗi app: 1 ngày → “Thường tập trung nhiều nhất vào **X** hằng tuần”; 2–3 ngày →
+  “Những ngày bạn tập trung nhiều nhất là **X, Y**!”; >3 ngày → câu “hơn 3 ngày”.
 - **Tải dữ liệu theo kỳ**: `LOAD_RANGE { from, to }` → `GET /plants?from_date&to_date`,
-  merge vào `serverPlants` (giới hạn 5000 bản ghi), nhờ vậy xem được tháng/năm cũ
-  ngoài cửa sổ 30 ngày của `sync()`.
+  trả `plants` cho trang (giữ trong bộ nhớ trang) và merge vào `serverPlants`
+  (giới hạn 5000 bản ghi mới nhất), nên xem được tháng/năm cũ ngoài cửa sổ 30 ngày
+  của `sync()` mà không bị cắt bởi giới hạn cache.
 - Dữ liệu gồm cả `pendingPlants` (chưa sync). Mở từ popup (`🌳 N`) hoặc Options
   (nút **Vườn cây**).

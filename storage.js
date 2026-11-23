@@ -2,7 +2,7 @@
    cây hoàn thành được ghi vào `pendingPlants` rồi đẩy lên server từng cây một
    (POST /plants { plant }), sau đó kéo lịch sử bằng GET /plants?from_date=… */
 
-import { api, configure, regionHosts } from "./api.js";
+import { api, challengeApi, configure, regionHosts } from "./api.js";
 
 const KEY = "fpState";
 
@@ -32,6 +32,10 @@ export const DEFAULT_STATE = {
   blockEnabled: true,
   floatEnabled: false,   // widget always-on-top (float/)
   notifyEnabled: false,  // toast hệ thống (tuỳ chọn, cần quyền)
+  challenges: [],         // ChallengeProgress[] (docs/CHALLENGE_API.md)
+  challengesLoadedAt: null,
+  deliveryAvailable: [],  // RewardItemType[] có thể claim
+  deliveryClaimed: [],    // RewardItemType[] đã claim
 };
 
 export async function loadState() {
@@ -42,6 +46,8 @@ export async function loadState() {
     region: state.region,
     accessToken: state.auth.accessToken,
     refreshToken: state.auth.refreshToken,
+    rememberToken: state.user?.rememberToken || null,
+    userId: state.user?.id || null,
     onTokens: (tokens) => {
       chrome.storage.local.get(KEY).then(({ [KEY]: s }) => {
         chrome.storage.local.set({ [KEY]: { ...s, auth: { ...s?.auth, ...tokens } } });
@@ -101,7 +107,10 @@ export async function signIn(email, password, region) {
   } catch (e) {
     user = { id: res.userId, name: "", email, coin: 0, boost: {}, rememberToken: null };
   }
+  // rememberToken → cfg để challenge/delivery (forest-api) gửi X-Auth-Token.
+  configure({ rememberToken: user?.rememberToken || null, userId: user?.id || res.userId });
   await saveState({ user });
+
   return user;
 }
 
@@ -154,6 +163,46 @@ export async function refreshProfile() {
   const user = await api.getUser(s.user.id);
   if (user) await saveState({ user });
   return user;
+}
+/* ---------- Focus challenge ---------- */
+
+/* Kéo danh sách challenge (progress) + delivery items rồi cache vào state.
+   Trả { challenges, available, claimed } — trường hợp lỗi vẫn trả mảng rỗng
+   để UI không kẹt; caller xem syncError/log nếu cần. */
+export async function loadChallenges({ withDelivery = true } = {}) {
+  const s = await loadState();
+  if (!s.user?.id) return { challenges: [], available: [], claimed: [] };
+  const uid = s.user.id;
+  const [challenges, available, claimed] = await Promise.all([
+    challengeApi.getProgresses(uid).catch((e) => { throw e; }),
+    withDelivery ? challengeApi.getAvailableItems(uid).catch(() => []) : Promise.resolve([]),
+    withDelivery ? challengeApi.getClaimedItems(uid).catch(() => []) : Promise.resolve([]),
+  ]);
+  await saveState({
+    challenges,
+    deliveryAvailable: available,
+    deliveryClaimed: claimed,
+    challengesLoadedAt: new Date().toISOString(),
+  });
+  return { challenges, available, claimed };
+}
+
+/* Claim thưởng một progress challenge; trả DeliverReward đã chuẩn hoá.
+   Sau khi claim, refresh lại danh sách để UI cập nhật status. */
+export async function claimChallengeReward(progressId) {
+  const s = await loadState();
+  if (!s.user?.id) throw new Error("chưa đăng nhập");
+  const reward = await challengeApi.claimProgressReward(s.user.id, progressId);
+  await loadChallenges().catch(() => {});
+  return reward;
+}
+
+export async function claimDeliveryItem(itemId) {
+  const s = await loadState();
+  if (!s.user?.id) throw new Error("chưa đăng nhập");
+  const reward = await challengeApi.claimItem(s.user.id, itemId);
+  await loadChallenges().catch(() => {});
+  return reward;
 }
 
 /* ---------- Ghi cây ---------- */

@@ -1,8 +1,6 @@
 # Forest Personal
 
-Bản dựng lại **không chính thức** của extension [Forest](https://www.forestapp.cc) (Chrome / Brave, Manifest V3) cho mục đích cá nhân: đăng nhập, trồng cây, nhận xu, xem vườn cây theo ngày/tuần/tháng/năm, chặn trang khi tập trung và widget nổi trên mọi app.
-
-> Dự án không liên kết với Seekrtech. Giao thức API được suy ra từ chính extension Forest 6.6.1 và đã kiểm chứng với server thật; xem chi tiết ở [`SPEC.md`](SPEC.md). Chỉ dùng với tài khoản của bạn.
+Bản dựng lại **không chính thức** của extension [Forest](https://www.forestapp.cc) (Chrome / Brave, Manifest V3) cho mục đích cá nhân: đăng nhập, trồng cây, nhận xu, xem vườn cây theo ngày/tuần/tháng/năm, chặn trang khi tập trung, widget nổi trên mọi app và **thử thách tập trung** (focus challenge).
 
 ## Tính năng
 
@@ -47,8 +45,7 @@ Chặn trang bằng `declarativeNetRequest` (blocklist hoặc whitelist):
 ### Khác
 
 - **Thông báo Telegram** qua bot của bạn (cây lớn/chết, xu, số cây trong ngày): thiết lập trong Options, có nút lấy chat ID và gửi thử.
-- **Thông báo hệ thống** (toast Windows, tuỳ chọn) khi cây lớn hoặc chết; bấm toast để mở Vườn cây.
-- **Badge vàng** `✓` / `+N` trên icon khi hoàn thành, tự xóa khi mở popup (dùng khi tắt thông báo).
+- **Thử thách tập trung**: tab *Thử thách* ở Options liệt kê challenge đang mở + tiến độ, nút **Nhận thưởng** khi `claimable`, và danh sách vật phẩm giao hàng claim được (`delivery/items`). API trích từ APK gốc ở [`docs/CHALLENGE_API.md`](docs/CHALLENGE_API.md).
 - **Sync 2 chiều**: đẩy cây đang chờ (`POST /plants`), kéo lịch sử (`GET /plants`), xu thưởng = chênh lệch coin sau khi ghi.
 - **Giao diện** light/dark theo hệ thống, dùng chung design token ở `ui.css`.
 

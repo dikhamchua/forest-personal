@@ -16,10 +16,17 @@
 const HOSTS = {
   global: {
     api: "https://c88fef96.forestapp.cc/api/v1",
+    // Host gốc của API legacy (không /api/v1) — challenge/delivery chạy ở
+    // forest-api.seekrtech.com; CDN c88fef96 chỉ phục vụ /api/v1.
+    root: "https://forest-api.seekrtech.com",
+    // Microservices (Ktor, forestapp v5.x) — starter challenge + event.
+    micro: "https://forest-api.seekrtech.com",
     auth: "https://auth.seekrtech.com",
   },
   china: {
     api: "https://forest-china.upwardsware.com/api/v1",
+    root: "https://forest-china.upwardsware.com",
+    micro: "https://forest-api.upwardsware.com",
     auth: "https://auth.upwardsware.com",
   },
 };
@@ -28,12 +35,15 @@ const cfg = {
   region: "global",
   accessToken: null,
   refreshToken: null,
+  rememberToken: null, // header Remember-Token / X-Auth-Token cho host forest-api
+  userId: null,        // seekruid query param
   onTokens: null, // (tokens) => void, gọi khi refresh thành công
 };
 
 export class ApiError extends Error {
-  constructor(status, data, url) {
-    super(`API ${status} ${url}`);
+  constructor(status, data, url, note = "") {
+    const body = typeof data === "string" ? data : data ? JSON.stringify(data) : "";
+    super(`API ${status} ${url}${body ? ` · ${body.slice(0, 200)}` : ""}${note ? ` [${note}]` : ""}`);
     this.status = status;
     this.data = data;
     this.url = url;
@@ -48,10 +58,15 @@ export function regionHosts(region = cfg.region) {
   return HOSTS[region] || HOSTS.global;
 }
 
-async function send(method, url, { json, token } = {}) {
+async function send(method, url, { json, token, rememberHeader } = {}) {
   const headers = { accept: "application/json" };
   if (json !== undefined) headers["content-type"] = "application/json";
   if (token) headers.authorization = `Bearer ${token}`;
+  // forest-api.* không đọc cookie remember_token; app gửi remember token qua header:
+  //  - Retrofit (challenge/delivery): RememberTokenInterceptor → `Remember-Token`
+  //  - Ktor microservices: PrioritizedAuthPlugin → `X-Auth-Token`
+  // (chỉ khi không có OAuth token — người dùng đăng nhập email là trường hợp này).
+  if (rememberHeader?.value) headers[rememberHeader.name] = rememberHeader.value;
 
   const res = await fetch(url, {
     method,
@@ -93,19 +108,36 @@ export function refreshToken() {
   return refreshing;
 }
 
-async function request(method, path, { json, auth = true, retry = true } = {}) {
-  const url = regionHosts().api + path;
+async function request(method, path, { json, auth = true, retry = true, base = "api" } = {}) {
+  const hosts = regionHosts();
+  let url = (base === "root" ? hosts.root : base === "micro" ? hosts.micro : hosts.api) + path;
+  // SeekrInterceptor của app gắn ?seekrua=android-<ver>&seekruid=<userId> vào mọi
+  // request Retrofit (cc.forestapp.network.config.interceptor.SeekrInterceptor).
+  if (base === "root") {
+    const sp = new URLSearchParams({ seekrua: "android-5.3.1" });
+    if (cfg.userId) sp.set("seekruid", String(cfg.userId));
+    url += (url.includes("?") ? "&" : "?") + sp.toString();
+  }
   let token = auth ? cfg.accessToken : null;
-  let out = await send(method, url, { json, token });
+  // Host forest-api dùng header remember token (xem send()).
+  const rememberHeader =
+    base === "api" || !cfg.rememberToken
+      ? null
+      : { name: base === "micro" ? "x-auth-token" : "remember-token", value: cfg.rememberToken };
+  let out = await send(method, url, { json, token, rememberHeader });
 
   if (retry && auth && (out.res.status === 401 || out.res.status === 403)) {
     try {
       token = await refreshToken();
-      out = await send(method, url, { json, token });
+      out = await send(method, url, { json, token, rememberHeader });
     } catch { /* không có refresh token → trả lỗi gốc */ }
   }
 
-  if (!out.res.ok) throw new ApiError(out.res.status, out.data, url);
+
+  if (!out.res.ok) {
+    const note = base === "api" ? "" : `${rememberHeader ? rememberHeader.name : "không có remember token"}`;
+    throw new ApiError(out.res.status, out.data, url, note);
+  }
   return out.data;
 }
 
@@ -152,6 +184,7 @@ export function normalizeTree(t) {
     gid: t.gid ?? t.id,
     title: t.title ?? `Cây #${t.gid}`,
     image: t.atlas_image_url ?? null,
+    atlasJsonUrl: t.atlas_json_url ?? null, // sprite sheet JSON nếu cần crop
   };
 }
 
@@ -174,7 +207,172 @@ export function normalizePlant(p) {
   };
 }
 
-/* --- Endpoints --- */
+/* --- Challenge DTO (snake_case → camelCase) --- */
+
+export function normalizeChallenge(c) {
+  if (!c || typeof c !== "object") return null;
+  return {
+    id: c.id ?? null,
+    kind: c.kind ?? null,
+    titleKey: c.title_key ?? c.titleKey ?? "",
+    subtitleKey: c.subtitle_key ?? c.subtitleKey ?? "",
+    imageUrl: c.image_url ?? c.imageUrl ?? null,
+    createdAt: c.created_at ?? c.createdAt ?? null,
+    updatedAt: c.updated_at ?? c.updatedAt ?? null,
+  };
+}
+
+export function normalizeTargetRange(r) {
+  if (!r || typeof r !== "object") return null;
+  return {
+    lower: r.lower ?? 0,
+    upper: r.upper ?? 0,
+    excludeLower: !!r.exclude_lower,
+    excludeUpper: !!r.exclude_upper,
+  };
+}
+
+export function normalizeChallengeDifficulty(d) {
+  if (!d || typeof d !== "object") return null;
+  return {
+    id: d.id ?? null,
+    type: d.type ?? null,
+    challengeId: d.challenge_id ?? d.challengeId ?? null,
+    rewardTypeId: d.reward_type_id ?? d.rewardTypeId ?? null,
+    difficulty: d.difficulty ?? 0,
+    targetRange: normalizeTargetRange(d.target_range ?? d.targetRange),
+    targetStepSize: d.target_step_size ?? d.targetStepSize ?? 0,
+    treeType: d.tree_type ?? d.treeType ?? null,
+    createdAt: d.created_at ?? d.createdAt ?? null,
+    updatedAt: d.updated_at ?? d.updatedAt ?? null,
+    challenge: normalizeChallenge(d.challenge),
+  };
+}
+
+export function normalizeChallengeProgress(p) {
+  if (!p || typeof p !== "object") return null;
+  return {
+    id: p.id ?? null,
+    userId: p.user_id ?? p.userId ?? null,
+    challengeDifficultyId: p.challenge_difficulty_id ?? p.challengeDifficultyId ?? null,
+    target: p.target ?? 0,
+    progress: p.progress ?? 0,
+    status: p.status ?? null,
+    createdAt: p.created_at ?? p.createdAt ?? null,
+    updatedAt: p.updated_at ?? p.updatedAt ?? null,
+    availableAt: p.available_at ?? p.availableAt ?? null,
+    completedAt: p.completed_at ?? p.completedAt ?? null,
+    rewardDeliveredAt: p.reward_delivered_at ?? p.rewardDeliveredAt ?? null,
+    dueAt: p.due_at ?? p.dueAt ?? null,
+    challengeDifficulty: normalizeChallengeDifficulty(p.challenge_difficulty ?? p.challengeDifficulty),
+  };
+}
+
+export function normalizeRewardContent(r) {
+  if (!r || typeof r !== "object") return null;
+  return {
+    type: r.type ?? null,
+    value: r.value ?? 0,
+    titleKey: r.title_key ?? r.titleKey ?? "",
+    iconImageUrl: r.icon_image_url ?? r.iconImageUrl ?? null,
+  };
+}
+
+export function normalizeRewardItemType(r) {
+  if (!r || typeof r !== "object") return null;
+  return {
+    id: r.id ?? null,
+    content: (r.content || []).map(normalizeRewardContent).filter(Boolean),
+    titleKey: r.title_key ?? r.titleKey ?? "",
+    iconImageUrl: r.icon_image_url ?? r.iconImageUrl ?? null,
+    createdAt: r.created_at ?? r.createdAt ?? null,
+    updatedAt: r.updated_at ?? r.updatedAt ?? null,
+  };
+}
+
+export function normalizeDeliverReward(r) {
+  if (!r || typeof r !== "object") return null;
+  const item = r.item ?? r.reward ?? null;
+  return {
+    id: item?.id ?? r.id ?? null,
+    itemType: normalizeRewardItemType(item?.item_type ?? item?.itemType ?? r.item_type ?? r.itemType),
+    content: (item?.content || r.content || []).map(normalizeRewardContent).filter(Boolean),
+    raw: r,
+  };
+}
+
+/* --- Challenge API (legacy REST, xem docs/CHALLENGE_API.md) --- */
+
+export const challengeApi = {
+  // GET /challenge/users/{uid}/progresses — danh sách challenge + progress.
+  getProgresses(userId) {
+    return request("GET", `/challenge/users/${userId}/progresses`, { base: "root" }).then((d) =>
+      (d?.challenge_progresses || d?.challengeProgresses || []).map(normalizeChallengeProgress).filter(Boolean),
+    );
+  },
+
+  // PUT /challenge/users/{uid}/progresses/{pid}/reward — claim thưởng.
+  claimProgressReward(userId, progressId) {
+    return request("PUT", `/challenge/users/${userId}/progresses/${progressId}/reward`, { base: "root" }).then(
+      normalizeDeliverReward,
+    );
+  },
+
+  // GET /delivery/users/{uid}/items/available — item còn mở để claim.
+  getAvailableItems(userId) {
+    return request("GET", `/delivery/users/${userId}/items/available`, { base: "root" }).then((d) =>
+      (d?.items || []).map(normalizeRewardItemType).filter(Boolean),
+    );
+  },
+
+  // GET /delivery/users/{uid}/items/claimed — item đã claim.
+  getClaimedItems(userId) {
+    return request("GET", `/delivery/users/${userId}/items/claimed`, { base: "root" }).then((d) =>
+      (d?.items || []).map(normalizeRewardItemType).filter(Boolean),
+    );
+  },
+
+  // PUT /delivery/users/{uid}/items/{iid}/claim — claim một item.
+  claimItem(userId, itemId) {
+    return request("PUT", `/delivery/users/${userId}/items/${itemId}/claim`, { base: "root" }).then(
+      normalizeDeliverReward,
+    );
+  },
+
+  /* Microservices (starter challenge + event). userId là string ở backend mới. */
+  getNewUserProgresses(userId) {
+    return request("GET", `/challenge/users/${userId}/progresses/new_user`, { base: "micro" }).then((d) =>
+      (d?.challenge_progresses || d?.challengeProgresses || []).map(normalizeChallengeProgress).filter(Boolean),
+    );
+  },
+
+  postProgressEvent(userId, eventName, occurredAt = new Date().toISOString()) {
+    return request("POST", `/challenge/users/${userId}/progresses/events`, {
+      base: "micro",
+      json: { event_name: eventName, occurred_at: occurredAt },
+    });
+  },
+};
+
+/* Chẩn đoán challenge: chạy GET progresses và trả mọi thứ cần để biết vì sao 401
+   (không lộ giá trị token, chỉ độ dài). Dùng ở Options → Nâng cao. */
+export async function diagnoseChallenge() {
+  const info = {
+    region: cfg.region,
+    userId: cfg.userId,
+    hasRememberToken: !!cfg.rememberToken,
+    rememberTokenLen: cfg.rememberToken ? String(cfg.rememberToken).length : 0,
+    hasAccessToken: !!cfg.accessToken,
+    root: regionHosts().root,
+  };
+  if (!cfg.userId) return { ...info, ok: false, error: "chưa có userId (chưa đăng nhập?)" };
+  try {
+    const list = await challengeApi.getProgresses(cfg.userId);
+    return { ...info, ok: true, count: list.length };
+  } catch (e) {
+    return { ...info, ok: false, status: e.status ?? null, url: e.url ?? null, data: e.data ?? null, error: e.message };
+  }
+}
 
 export const api = {
   // Không gửi Bearer, không retry: đây là request tạo phiên.

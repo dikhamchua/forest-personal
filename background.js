@@ -2,7 +2,7 @@
    Bám theo background của Forest 6.6.1: phiên trồng nằm trong storage.local,
    mốc kết thúc dùng chrome.alarms, popup/options nói chuyện qua runtime message. */
 
-import { api, configure, regionHosts } from "./api.js";
+import { api, configure, regionHosts, diagnoseChallenge } from "./api.js";
 import { BUILD } from "./build.js";
 import {
   loadState,
@@ -15,6 +15,9 @@ import {
   buildTrees,
   mergePlants,
   sync,
+  loadChallenges,
+  claimChallengeReward,
+  claimDeliveryItem,
 } from "./storage.js";
 
 // Server chỉ nhận Origin của extension gốc. ID thật của extension này có thể khác
@@ -24,7 +27,9 @@ const ORIGIN_ID = "kjacjjdnoddnpbbcjilcajfhhbdhkpgk";
 const ORIGIN_RULE_ID = 900;
 const API_HOSTS = [
   "c88fef96.forestapp.cc",
+  "forest-api.seekrtech.com",
   "forest-china.upwardsware.com",
+  "forest-api.upwardsware.com",
   "auth.seekrtech.com",
   "auth.upwardsware.com",
 ];
@@ -591,7 +596,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           const st = await loadState();
           const merged = mergePlants(list, st.serverPlants);
           await saveState({ serverPlants: merged });
-          sendResponse({ ok: true, count: list.length, total: merged.length });
+          sendResponse({ ok: true, count: list.length, total: merged.length, plants: list });
         } catch (e) {
           sendResponse({ ok: false, error: e.message, status: e.status });
         }
@@ -605,6 +610,48 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         } catch (e) {
           sendResponse({ ok: false, error: e.message, status: e.status });
         }
+        break;
+      }
+      case "GET_CHALLENGES": {
+        try {
+          const r = await loadChallenges();
+          const st = await loadState();
+          sendResponse({
+            ok: true,
+            challenges: r.challenges,
+            deliveryAvailable: r.available,
+            deliveryClaimed: r.claimed,
+            loadedAt: st.challengesLoadedAt,
+          });
+        } catch (e) {
+          sendResponse({ ok: false, error: e.message, status: e.status });
+        }
+        break;
+      }
+      case "CLAIM_CHALLENGE_REWARD": {
+        try {
+          const reward = await claimChallengeReward(msg.progressId);
+          const st = await loadState();
+          sendResponse({ ok: true, reward, challenges: st.challenges });
+        } catch (e) {
+          sendResponse({ ok: false, error: e.message, status: e.status, data: e.data });
+        }
+        break;
+      }
+      case "CLAIM_DELIVERY_ITEM": {
+        try {
+          const reward = await claimDeliveryItem(msg.itemId);
+          const st = await loadState();
+          sendResponse({ ok: true, reward, deliveryAvailable: st.deliveryAvailable, deliveryClaimed: st.deliveryClaimed });
+        } catch (e) {
+          sendResponse({ ok: false, error: e.message, status: e.status, data: e.data });
+        }
+        break;
+      }
+      case "DIAG_CHALLENGE": {
+        await loadState(); // nạp cfg (region, token, userId) vào api.js
+        const d = await diagnoseChallenge();
+        sendResponse({ ok: true, build: BUILD, diag: d });
         break;
       }
       case "SET_FLOAT": {

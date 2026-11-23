@@ -34,13 +34,138 @@ let state = null;
 let mode = "day";
 let anchor = startOfDay(new Date());
 const loadedRanges = new Set();
+// Plant tải theo khoảng ngày (LOAD_RANGE) giữ trong bộ nhớ trang: cache storage của
+// background bị cắt còn 5000 plant mới nhất nên không đủ cho các năm cũ.
+const rangePlants = new Map();
 
 const isToday = (d) => startOfDay(d).getTime() === startOfDay(new Date()).getTime();
 
+const plantKey = (p) => (p.id != null ? `id:${p.id}` : `k:${p.startTime}|${p.endTime}|${p.tag}`);
+
 function allPlants() {
-  const saved = (state?.serverPlants || []).map((p) => ({ ...p, pending: false }));
-  const pending = (state?.pendingPlants || []).map((p) => ({ ...p, pending: true }));
-  return [...saved, ...pending].filter((p) => p.startTime);
+  const byKey = new Map();
+  for (const p of state?.serverPlants || []) byKey.set(plantKey(p), { ...p, pending: false });
+  for (const p of rangePlants.values()) byKey.set(plantKey(p), { ...p, pending: false });
+  for (const p of state?.pendingPlants || []) byKey.set(plantKey(p), { ...p, pending: true });
+  return [...byKey.values()].filter((p) => p.startTime);
+}
+
+/* Một plant có thể gồm nhiều cây (plant.trees[]). App đếm và vẽ theo từng cây:
+   SumHealthyAndDeadTreeUseCase lặp plant.trees và cộng theo TreeEntity.dead.
+   Plant chưa có trees (cây tạo cục bộ chưa sync) tính là 1 cây theo isSuccess. */
+function treesOf(p) {
+  if (p.trees?.length) {
+    return p.trees.map((t) => ({ plant: p, gid: t.treeType || p.treeTypeGid, dead: !!t.isDead }));
+  }
+  return [{ plant: p, gid: p.treeTypeGid, dead: !p.isSuccess }];
+}
+
+/* Load treeTypes nếu thiếu — cần ảnh cây từ atlas_image_url. */
+let catalogLoaded = false;
+async function ensureCatalog() {
+  if (catalogLoaded) return;
+  catalogLoaded = true;
+  try {
+    const r = await send({ cmd: "LOAD_CATALOG" }).catch(() => null);
+    if (r?.ok) {
+      const res = await send({ cmd: "GET_STATE" });
+      if (res?.ok) state = res.state;
+    }
+  } catch { /* bỏ qua, hiển thị không có ảnh */ }
+}
+
+/* Sprite crop: nếu atlas_image_url là sprite sheet, cần atlas_json_url để biết
+   frame rect. Cache canvas đã crop cho mỗi (gid, phase). */
+const spriteCache = new Map();
+
+async function treeSprite(tree, phase = 0) {
+  if (!tree?.image) return null;
+  const key = `${tree.gid}|${phase}`;
+  if (spriteCache.has(key)) return spriteCache.get(key);
+
+  try {
+    // Thử tải atlas_json_url trước để xem có phải sprite sheet không
+    if (tree.atlasJsonUrl) {
+      const resp = await fetch(tree.atlasJsonUrl, { cache: "no-store" });
+      if (resp.ok) {
+        const atlas = await resp.json();
+        const frame = selectFrame(atlas, phase);
+        if (frame) {
+          const img = await loadImage(tree.image);
+          const canvas = document.createElement("canvas");
+          canvas.width = frame.w;
+          canvas.height = frame.h;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(img, frame.x, frame.y, frame.w, frame.h, 0, 0, frame.w, frame.h);
+          const url = canvas.toDataURL();
+          spriteCache.set(key, url);
+          return url;
+        }
+      }
+    }
+    // Không có atlas_json_url hoặc không parse được → dùng ảnh toàn bộ
+    spriteCache.set(key, tree.image);
+    return tree.image;
+  } catch {
+    spriteCache.set(key, tree.image);
+    return tree.image;
+  }
+}
+
+function loadImage(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+
+/* Phân tích atlas JSON để tìm frame rect cho phase.
+   Hỗ trợ nhiều format phổ biến:
+   - TexturePacker: { frames: { "frame_name": { frame: {x,y,w,h} } } }
+   - Custom array: [{ x,y,w,h, phase: N }]
+   - Grid: { cols, rows, frameWidth, frameHeight, frames: [...] } */
+function selectFrame(atlas, phase) {
+  // TexturePacker format
+  if (atlas.frames && typeof atlas.frames === "object") {
+    const entries = Object.entries(atlas.frames);
+    // Tìm frame có phase matching hoặc frame_<n>
+    for (const [name, data] of entries) {
+      const match = name.match(/phase_?(\d+)/i) || name.match(/_(\d+)/);
+      if (match && parseInt(match[1]) === phase) {
+        const f = data.frame || data;
+        return { x: f.x, y: f.y, w: f.w, h: f.h };
+      }
+    }
+    // Lấy frame đầu tiên nếu không match
+    const first = entries[0];
+    if (first) {
+      const f = first[1].frame || first[1];
+      return { x: f.x, y: f.y, w: f.w, h: f.h };
+    }
+  }
+  // Array format
+  if (Array.isArray(atlas)) {
+    const idx = Math.min(phase, atlas.length - 1);
+    const f = atlas[idx];
+    if (f && typeof f === "object") {
+      return { x: f.x || 0, y: f.y || 0, w: f.w || f.width, h: f.h || f.height };
+    }
+  }
+  // Grid format
+  if (atlas.cols && atlas.rows && atlas.frameWidth && atlas.frameHeight) {
+    const cols = atlas.cols;
+    const idx = Math.min(phase, cols * atlas.rows - 1);
+    return {
+      x: (idx % cols) * atlas.frameWidth,
+      y: Math.floor(idx / cols) * atlas.frameHeight,
+      w: atlas.frameWidth,
+      h: atlas.frameHeight,
+    };
+  }
+  return null;
 }
 
 const minutesOf = (p) => {
@@ -90,72 +215,72 @@ const treeOf = (gid) => state?.treeTypes?.find((t) => Number(t.gid) === Number(g
 /* ---------- plot isometric ---------- */
 
 function plotSvg(plants) {
-  const N = 10;
-  const ox = 320, oy = 62, ux = 26.5, uy = 13.7, vx = -26.5, vy = 13.7;
-  const depth = 24;
-  const P = (i, j) => ({ x: ox + i * ux + j * vx, y: oy + i * uy + j * vy });
-
-  const cells = [];
-  for (let i = 0; i < N; i++) {
-    for (let j = 0; j < N; j++) {
-      const a = P(i, j), b = P(i + 1, j), c = P(i + 1, j + 1), d = P(i, j + 1);
-      cells.push({ i, j, pts: [a, b, c, d] });
-    }
-  }
+  const trees = plants
+    .slice()
+    .sort((a, b) => new Date(a.startTime) - new Date(b.startTime))
+    .flatMap(treesOf);
+  // Đất mặc định 10×10, nới ra khi số cây vượt diện tích (năm nhiều cây → đảo lớn hơn).
+  const N = Math.max(10, Math.ceil(Math.sqrt(trees.length)));
+  const ux = 300 / N, uy = ux * 0.517;
+  const size = ux * 1.3;
+  const ox = 320, oy = size + 8;
+  const depth = 12 + 1.8 * uy;
+  const lip = depth * 0.4;
+  const P = (i, j) => ({ x: ox + (i - j) * ux, y: oy + (i + j) * uy });
   const poly = (pts) => pts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+  const down = (p, h) => ({ x: p.x, y: p.y + h });
 
   const top = [P(0, 0), P(N, 0), P(N, N), P(0, N)];
-  const leftSide = [P(0, N), P(N, N), { x: P(N, N).x, y: P(N, N).y + depth }, { x: P(0, N).x, y: P(0, N).y + depth }];
-  const rightSide = [P(N, N), P(N, 0), { x: P(N, 0).x, y: P(N, 0).y + depth }, { x: P(N, N).x, y: P(N, N).y + depth }];
+  const L0 = P(0, N), C0 = P(N, N), R0 = P(N, 0);
+  const leftGrass = [L0, C0, down(C0, lip), down(L0, lip)];
+  const rightGrass = [C0, R0, down(R0, lip), down(C0, lip)];
+  const leftSoil = [down(L0, lip), down(C0, lip), down(C0, depth), down(L0, depth)];
+  const rightSoil = [down(C0, lip), down(R0, lip), down(R0, depth), down(C0, depth)];
 
-  const grid = [];
-  for (let k = 0; k <= N; k++) {
-    const a = P(k, 0), b = P(k, N), c = P(0, k), d = P(N, k);
-    grid.push(`<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"/>`);
-    grid.push(`<line x1="${c.x}" y1="${c.y}" x2="${d.x}" y2="${d.y}"/>`);
+  // Ô cỏ xen kẽ hai sắc như app.
+  const tiles = [];
+  for (let i = 0; i < N; i++) {
+    for (let j = (i % 2); j < N; j += 2) {
+      tiles.push(`<polygon points="${poly([P(i, j), P(i + 1, j), P(i + 1, j + 1), P(i, j + 1)])}"/>`);
+    }
   }
 
-  // Rải cây từ giữa ra ngoài: sắp ô theo khoảng cách tới tâm (hash cố định để ổn định).
-  const order = cells
-    .map((c) => ({ c, d: Math.hypot(c.i - (N - 1) / 2, c.j - (N - 1) / 2) + ((c.i * 7 + c.j * 13) % 10) / 10 }))
-    .sort((a, b) => a.d - b.d)
-    .map((x) => x.c);
-  // vẽ từ xa tới gần để cây phía trước che cây phía sau
-  const placed = [...plants].sort((a, b) => new Date(a.startTime) - new Date(b.startTime)).slice(0, N * N);
-  const extra = plants.length - placed.length;
+  // Chọn ô theo thứ tự giả ngẫu nhiên cố định (xorshift), rồi xếp cây theo thời gian từ sau ra trước.
+  const hash = (i, j) => {
+    let x = (i * 7919 + j * 104729 + 12345) | 0;
+    x ^= x << 13; x ^= x >>> 17; x ^= x << 5;
+    return x >>> 0;
+  };
+  const cells = [];
+  for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) cells.push({ i, j, h: hash(i, j) });
+  const chosen = cells
+    .sort((a, b) => a.h - b.h)
+    .slice(0, trees.length)
+    .sort((a, b) => (a.i + a.j) - (b.i + b.j) || a.i - b.i);
 
-  const treeEls = placed
-    .map((p, idx) => ({ p, cell: order[idx] }))
-    .sort((a, b) => (a.cell.i + a.cell.j) - (b.cell.i + b.cell.j))
-    .map(({ p, cell }) => {
-    const cx = (cell.pts[0].x + cell.pts[2].x) / 2;
-    const cy = (cell.pts[0].y + cell.pts[2].y) / 2;
-    const tree = treeOf(p.treeTypeGid);
-    const dead = !p.isSuccess;
-    const shadow = `<ellipse cx="${cx.toFixed(1)}" cy="${(cy + 2).toFixed(1)}" rx="9" ry="3.4" fill="rgba(0,0,0,.18)"/>`;
-    const media = tree?.image
-      ? `<image href="${esc(tree.image)}" x="${(cx - 17).toFixed(1)}" y="${(cy - 33).toFixed(1)}"
-           width="34" height="34" preserveAspectRatio="xMidYMax meet"
-           ${dead ? 'filter="url(#deadFilter)" opacity=".62"' : ""}/>`
-      : `<text x="${cx.toFixed(1)}" y="${(cy - 4).toFixed(1)}" font-size="24" text-anchor="middle"
-           ${dead ? 'opacity=".55"' : ""}>${dead ? "🥀" : "🌳"}</text>`;
-    return `<g><title>${esc(`${tree?.title || "Cây"} · ${tagTitle(p.tag)} · ${Math.round(minutesOf(p))}′`)}</title>${shadow}${media}</g>`;
+  const treeEls = chosen.map((cell, idx) => {
+    const t = trees[idx];
+    const c = P(cell.i + 0.5, cell.j + 0.5);
+    const type = treeOf(t.gid);
+    const imgUrl = type?.spriteUrl || type?.image;
+    const tip = `${type?.title || "Cây"} · ${tagTitle(t.plant.tag)} · ${Math.round(minutesOf(t.plant))}′${t.dead ? " · chết" : ""}`;
+    const media = imgUrl
+      ? `<image href="${esc(imgUrl)}" x="${(c.x - size / 2).toFixed(1)}" y="${(c.y - size * 0.92).toFixed(1)}"
+           width="${size.toFixed(1)}" height="${size.toFixed(1)}" preserveAspectRatio="xMidYMax meet"
+           ${t.dead ? 'filter="url(#deadFilter)" opacity=".7"' : ""}/>`
+      : `<text x="${c.x.toFixed(1)}" y="${(c.y + size * 0.05).toFixed(1)}" font-size="${(size * 0.8).toFixed(1)}" text-anchor="middle">${t.dead ? "🥀" : "🌳"}</text>`;
+    return `<g><title>${esc(tip)}</title>${media}</g>`;
   });
 
-  return `<svg viewBox="0 0 640 400" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Vườn cây">
-    <defs>
-      <linearGradient id="grass" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stop-color="#8ed15d"/><stop offset="1" stop-color="#6fbb46"/>
-      </linearGradient>
-      <filter id="deadFilter"><feColorMatrix type="saturate" values="0"/></filter>
-    </defs>
-    <polygon points="${poly(leftSide)}" fill="#8a5a3b"/>
-    <polygon points="${poly(rightSide)}" fill="#6f4630"/>
-    <polygon points="${poly(top)}" fill="url(#grass)"/>
-    <g stroke="rgba(255,255,255,.22)" stroke-width="1">${grid.join("")}</g>
-    <g stroke="rgba(0,0,0,.10)" stroke-width="1" fill="none"><polygon points="${poly(top)}"/></g>
+  return `<svg viewBox="0 0 640 ${Math.ceil(oy + 2 * N * uy + depth + 6)}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Vườn cây">
+    <defs><filter id="deadFilter"><feColorMatrix type="saturate" values="0.15"/></filter></defs>
+    <polygon points="${poly(leftSoil)}" fill="#63502b"/>
+    <polygon points="${poly(rightSoil)}" fill="#8e6e32"/>
+    <polygon points="${poly(leftGrass)}" fill="#739d24"/>
+    <polygon points="${poly(rightGrass)}" fill="#81a737"/>
+    <polygon points="${poly(top)}" fill="#a3d044"/>
+    <g fill="#aed950">${tiles.join("")}</g>
     ${treeEls.join("")}
-    ${extra > 0 ? `<text x="16" y="386" font-size="12" fill="rgba(255,255,255,.85)">+${extra} cây nữa</text>` : ""}
   </svg>`;
 }
 
@@ -198,42 +323,51 @@ function bucketize(plants) {
   return { buckets, labels };
 }
 
+/* Trục Y với bước chia "đẹp" (5,10,20,25,50,100…), tối đa ~6 vạch. */
+function yAxis(maxRaw) {
+  const rough = Math.max(5, maxRaw) / 5;
+  const pow = Math.pow(10, Math.floor(Math.log10(rough)));
+  const stepV = [1, 2, 2.5, 5, 10].map((m) => m * pow).find((v) => v >= rough) || 10 * pow;
+  const stepY = Math.max(5, Math.round(stepV));
+  return { stepY, max: Math.ceil(Math.max(5, maxRaw) / stepY) * stepY };
+}
+
+function gridSvg(L, R, W, yOf, { stepY, max }) {
+  const lines = [];
+  for (let v = 0; v <= max; v += stepY) {
+    const y = yOf(v);
+    lines.push(`<line x1="${L}" y1="${y.toFixed(1)}" x2="${W - R}" y2="${y.toFixed(1)}" stroke="#e6e6e6" stroke-width="1"/>`);
+    lines.push(`<text x="${L - 6}" y="${(y + 3).toFixed(1)}" font-size="10" text-anchor="end" fill="#999">${v}</text>`);
+  }
+  return lines;
+}
+
 function chartSvg(buckets, labels) {
   const W = 560, H = 190;
   const L = 36, R = 8, T = 10, B = 24;
   const plotW = W - L - R;
   const plotH = H - T - B;
-  const maxRaw = Math.max(5, ...buckets);
-  // bước chia "đẹp" (5,10,20,25,50,100…) để tối đa ~6 vạch
-  const rough = maxRaw / 5;
-  const pow = Math.pow(10, Math.floor(Math.log10(rough)));
-  const stepV = [1, 2, 2.5, 5, 10].map((m) => m * pow).find((v) => v >= rough) || 10 * pow;
-  const stepY = Math.max(5, Math.round(stepV));
-  const max = Math.ceil(maxRaw / stepY) * stepY;
+  const axis = yAxis(Math.max(...buckets));
+  const { max } = axis;
   const step = plotW / buckets.length;
   const yOf = (v) => T + plotH - (v / max) * plotH;
 
-  const lines = [];
-  for (let v = 0; v <= max; v += stepY) {
-    const y = yOf(v);
-    lines.push(`<line x1="${L}" y1="${y.toFixed(1)}" x2="${W - R}" y2="${y.toFixed(1)}" stroke="var(--border)" stroke-width="1"/>`);
-    lines.push(`<text x="${L - 6}" y="${(y + 3).toFixed(1)}" font-size="9" text-anchor="end" fill="var(--muted)">${v}</text>`);
-  }
+  const lines = gridSvg(L, R, W, yOf, axis);
 
-  const barW = Math.max(3, Math.min(14, step * 0.62));
+  const barW = Math.max(4, Math.min(22, step * 0.6));
   const bars = buckets.map((v, i) => {
     const x = L + i * step + (step - barW) / 2;
     const y = yOf(v);
-    const h = Math.max(v > 0 ? 2 : 0, T + plotH - y);
+    const h = Math.max(v > 0 ? 3 : 0, T + plotH - y);
     if (!h) return "";
     return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}"
-      rx="2" fill="var(--accent)"/>`;
+      rx="2" fill="#54a488"/>`;
   }).join("");
 
   const ticks = labels.map((text, i) => {
     if (!text) return "";
     const x = L + i * step + step / 2;
-    return `<text x="${x.toFixed(1)}" y="${H - 6}" font-size="9" text-anchor="middle" fill="var(--muted)">${esc(text)}</text>`;
+    return `<text x="${x.toFixed(1)}" y="${H - 6}" font-size="10" text-anchor="middle" fill="#999">${esc(text)}</text>`;
   }).join("");
 
   return `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto" role="img" aria-label="Phân bố thời gian tập trung">
@@ -246,18 +380,109 @@ function chartSvg(buckets, labels) {
 function render() {
   const { from, to } = bounds();
   const list = allPlants().filter((p) => inRange(p, from, to));
-  const alive = list.filter((p) => p.isSuccess).length;
-  const dead = list.length - alive;
+  const trees = list.flatMap(treesOf);
+  const dead = trees.filter((t) => t.dead).length;
   const total = Math.round(list.reduce((s, p) => s + minutesOf(p), 0));
 
   $("#label").textContent = labelFor();
-  $("#cnt-alive").textContent = alive;
+  const now = Date.now();
+  $("#today").hidden = now >= from.getTime() && now <= to.getTime();
+  $("#cnt-alive").textContent = trees.length - dead;
   $("#cnt-dead").textContent = dead;
   $("#plot").innerHTML = plotSvg(list);
 
   const { buckets, labels } = bucketize(list);
   $("#chart").innerHTML = chartSvg(buckets, labels);
-  $("#total").textContent = `Tổng: ${total} phút`;
+  $("#total").innerHTML = `Tổng thời gian tập trung: <b>${total}</b> phút`;
+
+  // Ngày tập trung nhiều nhất trong tuần: không có nghĩa ở tab Ngày.
+  $("#weekdayCard").hidden = mode === "day";
+  if (mode !== "day") renderWeekday(list, from, to);
+}
+
+/* ---------- ngày tập trung nhiều nhất trong tuần ----------
+   Như GroupTotalPlantingTimeByTimeUnitUseCase(average=true) của app: phút trung bình mỗi
+   thứ = tổng phút của thứ đó / số lần thứ đó xuất hiện trong kỳ (tính tới hôm nay).
+   Ngày cao nhất theo GetMaxPlantingTimeByTimeUnitUseCase (giữ mọi ngày bằng nhau). */
+
+const WEEKDAY_NAMES = ["Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy", "Chủ Nhật"];
+const weekdayIdx = (d) => (new Date(d).getDay() + 6) % 7; // thứ 2 = 0
+
+function weekdayAverages(list, from, to) {
+  const totals = Array(7).fill(0);
+  for (const p of list) totals[weekdayIdx(p.startTime)] += minutesOf(p);
+
+  const occur = Array(7).fill(0);
+  const end = new Date(Math.min(to.getTime(), Date.now()));
+  for (let d = startOfDay(from); d <= end; d = addDays(d, 1)) occur[weekdayIdx(d)]++;
+
+  return totals.map((t, i) => Math.round(t / Math.max(1, occur[i])));
+}
+
+function weekdayDescription(avgs) {
+  const top = Math.max(...avgs);
+  if (top <= 0) return "Chưa có thời gian tập trung trong kỳ này.";
+  const maxDays = avgs.flatMap((v, i) => (v === top ? [WEEKDAY_NAMES[i]] : []));
+  if (maxDays.length === 1) return `Thường tập trung nhiều nhất vào <b>${maxDays[0]}</b> hằng tuần`;
+  if (maxDays.length <= 3) return `Những ngày bạn tập trung nhiều nhất là <b>${maxDays.join(", ")}</b>!`;
+  return "Bạn có hơn 3 ngày tập trung nhiều nhất trong tuần. Ngày nào cũng có thể là ngày tập trung!";
+}
+
+function weekdayChartSvg(avgs) {
+  const W = 560, H = 190;
+  const L = 36, R = 16, T = 22, B = 24;
+  const plotW = W - L - R;
+  const plotH = H - T - B;
+  const axis = yAxis(Math.max(...avgs));
+  const yOf = (v) => T + plotH - (v / axis.max) * plotH;
+  const pad = 18; // tách điểm đầu/cuối khỏi nhãn trục Y và mép
+  const xOf = (i) => L + pad + ((plotW - 2 * pad) / 6) * i;
+  const top = Math.max(...avgs);
+  const isTop = (v) => top > 0 && v === top;
+
+  const pts = avgs.map((v, i) => `${xOf(i).toFixed(1)},${yOf(v).toFixed(1)}`);
+  const area = `${xOf(0).toFixed(1)},${yOf(0).toFixed(1)} ${pts.join(" ")} ${xOf(6).toFixed(1)},${yOf(0).toFixed(1)}`;
+  const dots = avgs.map((v, i) =>
+    `<circle cx="${xOf(i).toFixed(1)}" cy="${yOf(v).toFixed(1)}" r="${isTop(v) ? 6 : 3.5}" fill="#54a488"
+      ${isTop(v) ? 'stroke="#fff" stroke-width="2.5"' : ""}><title>${WEEKDAY_NAMES[i]}: ${v} phút</title></circle>` +
+    (isTop(v) ? `<text x="${xOf(i).toFixed(1)}" y="${(yOf(v) - 11).toFixed(1)}" font-size="11" font-weight="700" text-anchor="middle" fill="#54a488">${v}′</text>` : ""),
+  ).join("");
+  const ticks = DOW.map((t, i) =>
+    `<text x="${xOf(i).toFixed(1)}" y="${H - 6}" font-size="10" text-anchor="middle"
+      fill="${isTop(avgs[i]) ? "#54a488" : "#999"}" font-weight="${isTop(avgs[i]) ? 700 : 400}">${t}</text>`).join("");
+
+  return `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto" role="img" aria-label="Phút tập trung trung bình theo thứ">
+    ${gridSvg(L, R, W, yOf, axis).join("")}
+    <polygon points="${area}" fill="#54a488" opacity=".12"/>
+    <polyline points="${pts.join(" ")}" fill="none" stroke="#54a488" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+    ${dots}${ticks}
+  </svg>`;
+}
+
+function renderWeekday(list, from, to) {
+  const avgs = weekdayAverages(list, from, to);
+  $("#weekdayDesc").innerHTML = weekdayDescription(avgs);
+  $("#weekdayChart").innerHTML = weekdayChartSvg(avgs);
+}
+
+/* Crop sprite cho các cây trong list hiện tại (nếu có atlas_json_url).
+   Chạy async sau render, cập nhật lại plot khi xong. */
+let spriteCropRunning = false;
+async function cropSprites(plants) {
+  if (spriteCropRunning) return;
+  spriteCropRunning = true;
+  try {
+    const types = new Map();
+    for (const t of plants.flatMap(treesOf)) {
+      const type = treeOf(t.gid);
+      if (type && !type.spriteUrl && !spriteCache.has(`${type.gid}|0`)) types.set(type.gid, type);
+    }
+    if (!types.size) return;
+    for (const type of types.values()) type.spriteUrl = await treeSprite(type, 0);
+    render();
+  } finally {
+    spriteCropRunning = false;
+  }
 }
 
 async function ensureRange() {
@@ -268,6 +493,7 @@ async function ensureRange() {
   try {
     const r = await send({ cmd: "LOAD_RANGE", from: from.toISOString(), to: to.toISOString() });
     if (!r?.ok) throw new Error(r?.error || "load failed");
+    for (const p of r.plants || []) rangePlants.set(plantKey(p), p);
     const res = await send({ cmd: "GET_STATE" });
     if (res?.ok) state = res.state;
   } catch (e) {
@@ -288,10 +514,18 @@ async function refresh() {
   render();
   await ensureRange();
   render();
+  // Crop sprite async sau khi render — không chặn UI
+  const { from, to } = bounds();
+  const list = allPlants().filter((p) => inRange(p, from, to));
+  cropSprites(list).catch(() => {});
 }
 
 $("#prev").onclick = () => shift(-1);
 $("#next").onclick = () => shift(1);
+$("#today").onclick = () => {
+  anchor = startOfDay(new Date());
+  refresh();
+};
 
 for (const btn of document.querySelectorAll("#tabs button")) {
   btn.onclick = () => {
@@ -311,6 +545,10 @@ async function load() {
     render();
     await ensureRange();
     render();
+    // Crop sprite async — không chặn
+    const { from, to } = bounds();
+    const list = allPlants().filter((p) => inRange(p, from, to));
+    cropSprites(list).catch(() => {});
   } catch (e) {
     $("#note").hidden = false;
     $("#note").textContent = e.message;
