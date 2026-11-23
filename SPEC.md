@@ -372,9 +372,13 @@ thời gian tập trung.
 - **Số liệu kỳ**: đếm như `SumHealthyAndDeadTreeUseCase` của app — cộng từng
   `trees[]` theo `is_dead`; plant chưa có `trees` tính 1 cây theo `isSuccess`.
   Tổng phút = Σ(end − start).
-- **Biểu đồ**: cột phút theo bucket — ngày 24 giờ (nhãn 00:00…23:00), tuần 7 ngày
-  (T2…CN), tháng theo ngày (nhãn 1,5,10…), năm 12 tháng; dòng
-  “Tổng thời gian tập trung: N phút”.
+- **Biểu đồ phân bố**: theo bucket — ngày 24 giờ (nhãn 00:00…23:00), tuần 7 ngày
+  (T2…CN), tháng theo ngày (nhãn 1,5,10…), năm 12 tháng; dòng “Tổng thời gian tập
+  trung: N phút”.
+- **Kiểu biểu đồ** (`lineChartSvg`, dùng chung hai thẻ): thẻ tối navy
+  `#2e3e4e→#263441`, đường cong monotone (không vọt dưới 0), màu đường và vùng tô
+  gradient theo độ cao — phân bố xanh lá→xanh dương, ngày trong tuần vàng→hồng. Mốc
+  cao nhất hiện sẵn cột sáng + chấm + số phút; rê chuột lên mốc khác để xem mốc đó.
 - **Ngày tập trung nhiều nhất trong tuần** (ẩn ở tab Ngày): biểu đồ đường T2…CN,
   giá trị = phút trung bình mỗi thứ = tổng phút của thứ đó / số lần thứ đó xuất hiện
   trong kỳ tính tới hôm nay (như `GroupTotalPlantingTimeByTimeUnitUseCase`

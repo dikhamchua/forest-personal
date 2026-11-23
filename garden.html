@@ -12,12 +12,7 @@
     --fo-tabs: #1f4334;
     --fo-on-bg: #f3fffb;
     --fo-on-bg-muted: #b4cec1;
-    --fo-card: #f4f4f4;
     --fo-title: #333;
-    --fo-text: #666;
-    --fo-axis: #999;
-    --fo-grid: #e6e6e6;
-    --fo-bar: #54a488;
   }
 
   body {
@@ -94,23 +89,31 @@
   .counts svg { width: 22px; height: 22px; }
   .counts .dead { font-weight: 600; }
 
+  /* Thẻ biểu đồ kiểu dashboard tối (navy), đường cong gradient. */
   .card {
-    margin-top: 8px;
-    padding: 18px 22px 16px;
-    border-radius: 18px;
-    background: var(--fo-card);
-    color: var(--fo-title);
+    margin-top: 10px;
+    padding: 18px 20px 12px;
+    border-radius: 16px;
+    background: linear-gradient(180deg, #2e3e4e 0%, #263441 100%);
+    box-shadow: 0 10px 28px rgb(0 0 0 / 28%);
+    color: #e8eef3;
   }
   .card h2 {
-    margin: 0 0 12px;
+    margin: 0 0 10px;
     padding-bottom: 12px;
-    border-bottom: 1px solid var(--fo-grid);
-    font-size: 19px;
-    font-weight: 700;
-    color: var(--fo-title); /* ui.css đặt h2 = var(--fg), sáng ở theme tối */
+    border-bottom: 1px solid rgb(255 255 255 / 6%);
+    font-size: 17px;
+    font-weight: 600;
+    letter-spacing: .2px;
+    color: #e8eef3; /* ui.css đặt h2 = var(--fg) */
   }
-  .total { margin: 0 0 14px; font-size: 15px; color: var(--fo-text); }
-  .total b { color: var(--fo-bar); font-weight: 700; }
+  .total { margin: 0 0 8px; font-size: 14px; color: #8b9aa8; }
+  .total b { color: #45d4a8; font-weight: 700; }
+  #weekdayCard .total b { color: #f2e56b; }
+
+  .lc .hov { opacity: 0; transition: opacity .15s; cursor: default; }
+  .lc .hov:hover, .lc .hov.on { opacity: 1; }
+  .lc:has(.hov:hover) .hov.on:not(:hover) { opacity: 0; }
 
   #note { margin-top: 12px; color: var(--fo-on-bg-muted); }
 </style>

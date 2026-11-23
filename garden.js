@@ -287,14 +287,13 @@ function plotSvg(plants) {
 /* ---------- chart ---------- */
 
 function bucketize(plants) {
-  const { from, to } = bounds();
-  let buckets, labels, every;
+  let buckets, labels, names;
 
   if (mode === "day") {
     buckets = Array(24).fill(0);
     for (const p of plants) buckets[new Date(p.startTime).getHours()] += minutesOf(p);
     labels = Array.from({ length: 24 }, (_, h) => (h % 6 === 0 || h === 23 ? `${pad(h)}:00` : ""));
-    every = 1;
+    names = Array.from({ length: 24 }, (_, h) => `${pad(h)}:00`);
   } else if (mode === "week") {
     const start = startOfWeek(anchor);
     buckets = Array(7).fill(0);
@@ -303,7 +302,7 @@ function bucketize(plants) {
       if (idx >= 0 && idx < 7) buckets[idx] += minutesOf(p);
     }
     labels = DOW.slice();
-    every = 1;
+    names = WEEKDAY_NAMES.map((n, i) => `${n} ${addDays(start, i).getDate()}/${addDays(start, i).getMonth() + 1}`);
   } else if (mode === "month") {
     const days = new Date(anchor.getFullYear(), anchor.getMonth() + 1, 0).getDate();
     buckets = Array(days).fill(0);
@@ -312,15 +311,15 @@ function bucketize(plants) {
       if (d >= 0 && d < days) buckets[d] += minutesOf(p);
     }
     labels = Array.from({ length: days }, (_, i) => (i === 0 || (i + 1) % 5 === 0 ? String(i + 1) : ""));
-    every = 1;
+    names = Array.from({ length: days }, (_, i) => `${i + 1}/${anchor.getMonth() + 1}`);
   } else {
     buckets = Array(12).fill(0);
     for (const p of plants) buckets[new Date(p.startTime).getMonth()] += minutesOf(p);
     labels = MONTHS.map((m) => m.replace("tháng ", "T"));
-    every = 1;
+    names = MONTHS.map((m) => m.replace("tháng", "Tháng"));
   }
 
-  return { buckets, labels };
+  return { buckets: buckets.map(Math.round), labels, names };
 }
 
 /* Trục Y với bước chia "đẹp" (5,10,20,25,50,100…), tối đa ~6 vạch. */
@@ -336,42 +335,95 @@ function gridSvg(L, R, W, yOf, { stepY, max }) {
   const lines = [];
   for (let v = 0; v <= max; v += stepY) {
     const y = yOf(v);
-    lines.push(`<line x1="${L}" y1="${y.toFixed(1)}" x2="${W - R}" y2="${y.toFixed(1)}" stroke="#e6e6e6" stroke-width="1"/>`);
-    lines.push(`<text x="${L - 6}" y="${(y + 3).toFixed(1)}" font-size="10" text-anchor="end" fill="#999">${v}</text>`);
+    lines.push(`<line x1="${L}" y1="${y.toFixed(1)}" x2="${W - R}" y2="${y.toFixed(1)}" stroke="#fff" stroke-opacity=".06" stroke-width="1"/>`);
+    lines.push(`<text x="${L - 8}" y="${(y + 3).toFixed(1)}" font-size="10" text-anchor="end" fill="#6f7d8a">${v}</text>`);
   }
   return lines;
 }
 
-function chartSvg(buckets, labels) {
-  const W = 560, H = 190;
-  const L = 36, R = 8, T = 10, B = 24;
+/* Đường cong monotone (Fritsch–Carlson): mượt nhưng không vọt quá điểm dữ liệu,
+   nên không bao giờ võng xuống dưới 0. */
+function smoothPath(p) {
+  if (p.length < 2) return p.length ? `M${p[0].x},${p[0].y}` : "";
+  const n = p.length;
+  const m = [];
+  for (let k = 0; k < n - 1; k++) m.push((p[k + 1].y - p[k].y) / (p[k + 1].x - p[k].x));
+  const t = p.map((_, k) => (k === 0 ? m[0] : k === n - 1 ? m[n - 2] : m[k - 1] * m[k] <= 0 ? 0 : (m[k - 1] + m[k]) / 2));
+  for (let k = 0; k < n - 1; k++) {
+    if (m[k] === 0) { t[k] = 0; t[k + 1] = 0; continue; }
+    const a = t[k] / m[k], b = t[k + 1] / m[k], s = a * a + b * b;
+    if (s > 9) { const tau = 3 / Math.sqrt(s); t[k] = tau * a * m[k]; t[k + 1] = tau * b * m[k]; }
+  }
+  const f = (v) => v.toFixed(1);
+  let d = `M${f(p[0].x)},${f(p[0].y)}`;
+  for (let k = 0; k < n - 1; k++) {
+    const dx = (p[k + 1].x - p[k].x) / 3;
+    d += ` C${f(p[k].x + dx)},${f(p[k].y + t[k] * dx)} ${f(p[k + 1].x - dx)},${f(p[k + 1].y - t[k + 1] * dx)} ${f(p[k + 1].x)},${f(p[k + 1].y)}`;
+  }
+  return d;
+}
+
+const CHART_PALETTES = {
+  green: { hi: "#45d4a8", lo: "#2d9cdb" },
+  warm: { hi: "#f2e56b", lo: "#e47ba0" },
+};
+
+/* Biểu đồ đường dùng chung, kiểu thẻ tối: đường cong đổi màu theo độ cao, vùng tô
+   gradient mờ dần. Rê chuột lên một mốc hiện cột sáng + chấm + giá trị; khi không rê,
+   (các) mốc cao nhất được hiện sẵn. CSS .lc/.hov nằm trong garden.html. */
+let chartSeq = 0;
+function lineChartSvg({ values, labels, names, palette = "green", ariaLabel }) {
+  const W = 560, H = 200;
+  const L = 36, R = 16, T = 26, B = 26;
   const plotW = W - L - R;
   const plotH = H - T - B;
-  const axis = yAxis(Math.max(...buckets));
-  const { max } = axis;
-  const step = plotW / buckets.length;
-  const yOf = (v) => T + plotH - (v / max) * plotH;
+  const n = values.length;
+  const axis = yAxis(Math.max(...values));
+  const yOf = (v) => T + plotH - (v / axis.max) * plotH;
+  const pad = 18; // tách điểm đầu/cuối khỏi nhãn trục Y và mép
+  const step = (plotW - 2 * pad) / Math.max(1, n - 1);
+  const xOf = (i) => L + pad + step * i;
+  const top = Math.max(...values);
+  const { hi, lo } = CHART_PALETTES[palette];
+  const id = `lc${++chartSeq}`;
+  const base = T + plotH;
 
-  const lines = gridSvg(L, R, W, yOf, axis);
+  const pts = values.map((v, i) => ({ x: xOf(i), y: yOf(v) }));
+  const line = smoothPath(pts);
+  const area = `${line} L${xOf(n - 1).toFixed(1)},${base} L${xOf(0).toFixed(1)},${base} Z`;
 
-  const barW = Math.max(4, Math.min(22, step * 0.6));
-  const bars = buckets.map((v, i) => {
-    const x = L + i * step + (step - barW) / 2;
-    const y = yOf(v);
-    const h = Math.max(v > 0 ? 3 : 0, T + plotH - y);
-    if (!h) return "";
-    return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}"
-      rx="2" fill="#54a488"/>`;
+  const ticks = labels.map((t, i) => (t
+    ? `<text x="${xOf(i).toFixed(1)}" y="${H - 8}" font-size="10" text-anchor="middle" fill="#6f7d8a">${esc(t)}</text>`
+    : "")).join("");
+
+  const hovers = values.map((v, i) => {
+    const x = xOf(i), y = yOf(v);
+    const on = top > 0 && v === top ? " on" : "";
+    const xl = labels[i] || names[i];
+    const xlW = xl.length * 6.4 + 12; // nền che nhãn trục X bên cạnh khi bị đè
+    return `<g class="hov${on}">
+      <title>${esc(names[i])}: ${v} phút</title>
+      <rect x="${(x - step / 2).toFixed(1)}" y="${T - 18}" width="${step.toFixed(1)}" height="${plotH + 18}" fill="#fff" fill-opacity=".05"/>
+      <text x="${x.toFixed(1)}" y="${(y - 12).toFixed(1)}" font-size="11" font-weight="600" text-anchor="middle" fill="#fff">${v}′</text>
+      <circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4.5" fill="#fff" stroke="url(#${id}s)" stroke-width="2.5"/>
+      <rect x="${(x - xlW / 2).toFixed(1)}" y="${H - 21}" width="${xlW.toFixed(1)}" height="18" rx="9" fill="#3a4a5b"/>
+      <text x="${x.toFixed(1)}" y="${H - 8}" font-size="10" font-weight="700" text-anchor="middle" fill="#fff">${esc(xl)}</text>
+    </g>`;
   }).join("");
 
-  const ticks = labels.map((text, i) => {
-    if (!text) return "";
-    const x = L + i * step + step / 2;
-    return `<text x="${x.toFixed(1)}" y="${H - 6}" font-size="10" text-anchor="middle" fill="#999">${esc(text)}</text>`;
-  }).join("");
-
-  return `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto" role="img" aria-label="Phân bố thời gian tập trung">
-    ${lines.join("")}${bars}${ticks}
+  return `<svg class="lc" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto" role="img" aria-label="${esc(ariaLabel)}">
+    <defs>
+      <linearGradient id="${id}s" gradientUnits="userSpaceOnUse" x1="0" y1="${T}" x2="0" y2="${base}">
+        <stop offset="0" stop-color="${hi}"/><stop offset="1" stop-color="${lo}"/>
+      </linearGradient>
+      <linearGradient id="${id}a" gradientUnits="userSpaceOnUse" x1="0" y1="${T}" x2="0" y2="${base}">
+        <stop offset="0" stop-color="${hi}" stop-opacity=".35"/><stop offset="1" stop-color="${lo}" stop-opacity="0"/>
+      </linearGradient>
+    </defs>
+    ${gridSvg(L, R, W, yOf, axis).join("")}
+    <path d="${area}" fill="url(#${id}a)"/>
+    <path d="${line}" fill="none" stroke="url(#${id}s)" stroke-width="2.5" stroke-linecap="round"/>
+    ${ticks}${hovers}
   </svg>`;
 }
 
@@ -391,8 +443,8 @@ function render() {
   $("#cnt-dead").textContent = dead;
   $("#plot").innerHTML = plotSvg(list);
 
-  const { buckets, labels } = bucketize(list);
-  $("#chart").innerHTML = chartSvg(buckets, labels);
+  const { buckets, labels, names } = bucketize(list);
+  $("#chart").innerHTML = lineChartSvg({ values: buckets, labels, names, ariaLabel: "Phân bố thời gian tập trung" });
   $("#total").innerHTML = `Tổng thời gian tập trung: <b>${total}</b> phút`;
 
   // Ngày tập trung nhiều nhất trong tuần: không có nghĩa ở tab Ngày.
@@ -429,34 +481,7 @@ function weekdayDescription(avgs) {
 }
 
 function weekdayChartSvg(avgs) {
-  const W = 560, H = 190;
-  const L = 36, R = 16, T = 22, B = 24;
-  const plotW = W - L - R;
-  const plotH = H - T - B;
-  const axis = yAxis(Math.max(...avgs));
-  const yOf = (v) => T + plotH - (v / axis.max) * plotH;
-  const pad = 18; // tách điểm đầu/cuối khỏi nhãn trục Y và mép
-  const xOf = (i) => L + pad + ((plotW - 2 * pad) / 6) * i;
-  const top = Math.max(...avgs);
-  const isTop = (v) => top > 0 && v === top;
-
-  const pts = avgs.map((v, i) => `${xOf(i).toFixed(1)},${yOf(v).toFixed(1)}`);
-  const area = `${xOf(0).toFixed(1)},${yOf(0).toFixed(1)} ${pts.join(" ")} ${xOf(6).toFixed(1)},${yOf(0).toFixed(1)}`;
-  const dots = avgs.map((v, i) =>
-    `<circle cx="${xOf(i).toFixed(1)}" cy="${yOf(v).toFixed(1)}" r="${isTop(v) ? 6 : 3.5}" fill="#54a488"
-      ${isTop(v) ? 'stroke="#fff" stroke-width="2.5"' : ""}><title>${WEEKDAY_NAMES[i]}: ${v} phút</title></circle>` +
-    (isTop(v) ? `<text x="${xOf(i).toFixed(1)}" y="${(yOf(v) - 11).toFixed(1)}" font-size="11" font-weight="700" text-anchor="middle" fill="#54a488">${v}′</text>` : ""),
-  ).join("");
-  const ticks = DOW.map((t, i) =>
-    `<text x="${xOf(i).toFixed(1)}" y="${H - 6}" font-size="10" text-anchor="middle"
-      fill="${isTop(avgs[i]) ? "#54a488" : "#999"}" font-weight="${isTop(avgs[i]) ? 700 : 400}">${t}</text>`).join("");
-
-  return `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto" role="img" aria-label="Phút tập trung trung bình theo thứ">
-    ${gridSvg(L, R, W, yOf, axis).join("")}
-    <polygon points="${area}" fill="#54a488" opacity=".12"/>
-    <polyline points="${pts.join(" ")}" fill="none" stroke="#54a488" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-    ${dots}${ticks}
-  </svg>`;
+  return lineChartSvg({ values: avgs, labels: DOW, names: WEEKDAY_NAMES, palette: "warm", ariaLabel: "Phút tập trung trung bình theo thứ" });
 }
 
 function renderWeekday(list, from, to) {
